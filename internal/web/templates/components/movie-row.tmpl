@@ -1,5 +1,9 @@
 {{/* movie-row: one movie in the Movies list. Takes a MovieRow. */}}
 {{define "movie-row"}}<li class="movie-row">
-<span class="movie-row__title">{{.Title}}</span>{{if .Year}} <span class="movie-row__year">{{.Year}}</span>{{end}}
+{{template "poster" .Poster}}
+<div class="movie-row__main">
+<h2 class="movie-row__title">{{.Title}}</h2>
+{{if or .Year .Added}}<p class="movie-row__meta">{{if .Year}}<span class="movie-row__year">{{.Year}}</span>{{end}}{{if .Added}}<span class="movie-row__added">{{.Added}}</span>{{end}}</p>{{end}}
+</div>
 </li>
 {{end}}

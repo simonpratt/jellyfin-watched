@@ -1,0 +1,3 @@
+{{/* button: takes a Button. Default is outlined; Primary fills with the
+     accent (password screen only). */}}
+{{define "button"}}<button type="button" class="button{{if .Primary}} button--primary{{end}}">{{.Label}}</button>{{end}}

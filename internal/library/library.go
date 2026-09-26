@@ -14,7 +14,8 @@ import (
 type Movie struct {
 	ID    string
 	Title string
-	Year  int // 0 when Jellyfin has no production year
+	Year  int       // 0 when Jellyfin has no production year
+	Added time.Time // when it was added to the library; zero if unknown
 }
 
 // Snapshot is a complete, immutable view of the library at one moment.
@@ -59,7 +60,7 @@ func (c *Cache) Refresh(ctx context.Context) error {
 	}
 	movies := make([]Movie, 0, len(items))
 	for _, it := range items {
-		movies = append(movies, Movie{ID: it.ID, Title: it.Name, Year: it.ProductionYear})
+		movies = append(movies, Movie{ID: it.ID, Title: it.Name, Year: it.ProductionYear, Added: it.DateCreated})
 	}
 	c.snap.Store(&Snapshot{Movies: movies, LoadedAt: c.now()})
 	return nil

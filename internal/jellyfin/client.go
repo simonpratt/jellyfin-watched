@@ -78,6 +78,10 @@ type Item struct {
 	Name           string `json:"Name"`
 	Type           string `json:"Type"`
 	ProductionYear int    `json:"ProductionYear,omitempty"`
+	// DateCreated is when the item was added to the library. Confirmed
+	// against Jellyfin 12.1.0: it is only returned when the request asks for
+	// fields=DateCreated, formatted like "2026-04-05T21:22:25.7865705Z".
+	DateCreated time.Time `json:"DateCreated,omitzero"`
 }
 
 type itemsPage struct {
@@ -118,5 +122,6 @@ func (c *Client) Movies(ctx context.Context) ([]Item, error) {
 		"recursive":        {"true"},
 		"sortBy":           {"SortName"},
 		"sortOrder":        {"Ascending"},
+		"fields":           {"DateCreated"},
 	})
 }

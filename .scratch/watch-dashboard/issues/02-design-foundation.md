@@ -4,15 +4,15 @@
 
 **Blocked by:** 01 (Walking skeleton). The designer's deliverables are in `designs/`.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `tokens.css` is copied from `designs/tokens.css` with `color-scheme: dark` and without the light-theme block; the reduced-motion block stays and zeroes `--duration`
-- [ ] The component layout, view-model pattern and gallery test from CLAUDE.md "UI components" are set up, with the `poster` placeholder, `button` and `movie-row` (title, year, added date) as the first components
-- [ ] The header matches the design: the Spool mark and name, the Movies / TV shows tabs with counts, and space for the refresh control
-- [ ] Instrument Sans and IBM Plex Mono woff2 files are embedded with their SIL OFL licence, and the system font stacks are the fallback (if downloading is blocked by the network policy, report the host that needs allowing)
-- [ ] The Movies / TV shows switch is present and works with the keyboard; the TV shows tab can be a placeholder page for now
-- [ ] The movie row matches the design at desktop width and at 380 px, without horizontal page scroll
-- [ ] Every interactive element has a visible focus style; motion respects `prefers-reduced-motion`
-- [ ] Text meets WCAG 2.2 AA contrast
-- [ ] The Spool reel favicon is a single SVG, and it is embedded and served
-- [ ] All wording uses sentence case (DESIGN.md §11)
+- [x] `tokens.css` is copied from `designs/tokens.css` with `color-scheme: dark` and without the light-theme block; the reduced-motion block stays and zeroes `--duration`
+- [x] The component layout, view-model pattern and gallery test from CLAUDE.md "UI components" are set up, with the `poster` placeholder, `button` and `movie-row` (title, year, added date) as the first components
+- [x] The header matches the design: the Spool mark and name, the Movies / TV shows tabs with counts, and space for the refresh control
+- [x] Instrument Sans and IBM Plex Mono woff2 files are embedded with their SIL OFL licence, and the system font stacks are the fallback (if downloading is blocked by the network policy, report the host that needs allowing)
+- [x] The Movies / TV shows switch is present and works with the keyboard; the TV shows tab can be a placeholder page for now
+- [x] The movie row matches the design at desktop width and at 380 px, without horizontal page scroll
+- [x] Every interactive element has a visible focus style; motion respects `prefers-reduced-motion`
+- [x] Text meets WCAG 2.2 AA contrast
+- [x] The Spool reel favicon is a single SVG, and it is embedded and served
+- [x] All wording uses sentence case (DESIGN.md §11)

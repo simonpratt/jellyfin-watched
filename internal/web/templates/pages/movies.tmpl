@@ -1,11 +1,17 @@
 {{define "content"}}
-<h1>Movies</h1>
+<div class="page-head">
+<div class="page-head__text">
+<h1 class="page-head__title">Movies</h1>
+{{if .Summary}}<p class="page-head__summary">{{.Summary}}</p>{{end}}
+</div>
+<div class="page-head__tools"></div>
+</div>
 {{if not .Loaded}}
-<p>The library hasn't loaded yet.</p>
+<p class="page-message">The library hasn't loaded yet.</p>
 {{else if not .Movies}}
-<p>No movies in the library.</p>
+<p class="page-message">No movies in the library.</p>
 {{else}}
-<p>{{.Count}}</p>
+<div class="list-head" aria-hidden="true"><span class="list-head__title">Title</span></div>
 <ul class="movie-list">
 {{range .Movies}}{{template "movie-row" .}}{{end}}
 </ul>

@@ -44,16 +44,26 @@ func NewHandler(lib Snapshots, logger *slog.Logger) (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.Handle("GET /{$}", http.RedirectHandler("/movies", http.StatusFound))
 	mux.HandleFunc("GET /movies", h.movies)
+	mux.HandleFunc("GET /tv", h.tv)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
 	return mux, nil
+}
+
+// parseBase parses the layout and every component, without any page.
+func parseBase() (*template.Template, error) {
+	base, err := template.ParseFS(assets, "templates/layout.tmpl", "templates/components/*.tmpl")
+	if err != nil {
+		return nil, fmt.Errorf("parsing layout and components: %w", err)
+	}
+	return base, nil
 }
 
 // parsePages builds one template set per page: the layout, every component,
 // and that page's "content" block.
 func parsePages() (map[string]*template.Template, error) {
-	base, err := template.ParseFS(assets, "templates/layout.tmpl", "templates/components/*.tmpl")
+	base, err := parseBase()
 	if err != nil {
-		return nil, fmt.Errorf("parsing layout and components: %w", err)
+		return nil, err
 	}
 	pageFiles, err := fs.Glob(assets, "templates/pages/*.tmpl")
 	if err != nil {
@@ -74,6 +84,11 @@ func parsePages() (map[string]*template.Template, error) {
 func (h *handler) movies(w http.ResponseWriter, r *http.Request) {
 	snap, ok := h.lib.Snapshot()
 	h.render(w, "movies", "layout", newMoviesPage(snap, ok))
+}
+
+func (h *handler) tv(w http.ResponseWriter, r *http.Request) {
+	snap, ok := h.lib.Snapshot()
+	h.render(w, "tv", "layout", newTVPage(snap, ok))
 }
 
 // render executes a page into a buffer first, so a template error becomes a

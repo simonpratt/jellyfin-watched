@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"jellyfin-watched/internal/library"
 )
@@ -114,5 +115,123 @@ func TestAssetsEmbeddedAndLocal(t *testing.T) {
 	}
 	if !strings.Contains(get(t, h, "/static/htmx.min.js").Body.String(), "htmx") {
 		t.Error("htmx.min.js is not htmx")
+	}
+}
+
+func TestMovieRowShowsYearAndAddedDate(t *testing.T) {
+	h := newTestHandler(t, stubSnapshots{ok: true, snap: library.Snapshot{Movies: []library.Movie{
+		{ID: "a", Title: "2001: A Space Odyssey", Year: 1968, Added: time.Date(2024, 2, 14, 23, 0, 0, 0, time.UTC)},
+		{ID: "b", Title: "Undated"},
+	}}})
+	body := get(t, h, "/movies").Body.String()
+	for _, want := range []string{
+		`<span class="movie-row__year">1968</span>`,
+		`<span class="movie-row__added">Added 14 Feb 2024</span>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page missing %s", want)
+		}
+	}
+	if strings.Count(body, "movie-row__added") != 1 {
+		t.Error("a movie with no added date still shows an added date")
+	}
+	// Every row has a poster slot, a placeholder until cover art arrives.
+	if n := strings.Count(body, `class="poster poster--placeholder"`); n != 2 {
+		t.Errorf("%d placeholder posters, want 2", n)
+	}
+}
+
+func TestHeaderHasMarkNameTabsAndRefreshSlot(t *testing.T) {
+	movies := make([]library.Movie, 1284)
+	h := newTestHandler(t, stubSnapshots{ok: true, snap: library.Snapshot{Movies: movies}})
+	body := get(t, h, "/movies").Body.String()
+	for _, want := range []string{
+		`class="app-header__mark"`,
+		`>Spool<`,
+		`<nav class="app-header__tabs" aria-label="Library">`,
+		`<a class="app-header__tab" href="/movies" aria-current="page">Movies <span class="app-header__count">1,284</span></a>`,
+		`<a class="app-header__tab" href="/tv">TV shows</a>`,
+		`class="app-header__actions"`,
+		`<h1 class="page-head__title">Movies</h1>`,
+		`<p class="page-head__summary">1,284 movies</p>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page missing %s", want)
+		}
+	}
+}
+
+func TestMovieCountHiddenBeforeFirstLoad(t *testing.T) {
+	body := get(t, newTestHandler(t, stubSnapshots{}), "/movies").Body.String()
+	if strings.Contains(body, "app-header__count") {
+		t.Error("tab shows a count before the library has loaded")
+	}
+}
+
+func TestTVShowsPagePlaceholder(t *testing.T) {
+	rec := get(t, newTestHandler(t, stubSnapshots{ok: true}), "/tv")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`<title>TV shows · Spool</title>`,
+		`<a class="app-header__tab" href="/tv" aria-current="page">TV shows</a>`,
+		`<h1 class="page-head__title">TV shows</h1>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page missing %s", want)
+		}
+	}
+	if strings.Count(body, `aria-current="page"`) != 1 {
+		t.Error("want exactly one current tab")
+	}
+}
+
+func TestFaviconIsOneEmbeddedSVG(t *testing.T) {
+	h := newTestHandler(t, stubSnapshots{ok: true})
+	body := get(t, h, "/movies").Body.String()
+	if !strings.Contains(body, `<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">`) {
+		t.Error("page does not link the SVG favicon")
+	}
+	rec := get(t, h, "/static/favicon.svg")
+	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "image/svg+xml") {
+		t.Fatalf("favicon: status %d, Content-Type %q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+	svg := rec.Body.String()
+	if strings.Count(svg, "<svg") != 1 || strings.Contains(svg, "prefers-color-scheme") {
+		t.Errorf("favicon is not a single dark-only SVG: %s", svg)
+	}
+}
+
+func TestFontsEmbeddedWithLicence(t *testing.T) {
+	h := newTestHandler(t, stubSnapshots{ok: true})
+	css := get(t, h, "/static/css/components.css").Body.String()
+	urls := regexp.MustCompile(`url\("\.\./fonts/([^"]+\.woff2)"\)`).FindAllStringSubmatch(css, -1)
+	families := map[string]bool{}
+	for _, m := range regexp.MustCompile(`font-family: "([^"]+)";`).FindAllStringSubmatch(css, -1) {
+		families[m[1]] = true
+	}
+	if !families["Instrument Sans"] || !families["IBM Plex Mono"] {
+		t.Errorf("@font-face families = %v", families)
+	}
+	if len(urls) < 2 {
+		t.Fatalf("components.css declares %d woff2 fonts", len(urls))
+	}
+	for _, m := range urls {
+		rec := get(t, h, "/static/fonts/"+m[1])
+		if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Body.String(), "wOF2") {
+			t.Errorf("font %s: status %d, not woff2", m[1], rec.Code)
+		}
+	}
+	for _, lic := range []string{"OFL-InstrumentSans.txt", "OFL-IBMPlexMono.txt"} {
+		if body := get(t, h, "/static/fonts/"+lic).Body.String(); !strings.Contains(body, "SIL Open Font License, Version 1.1") {
+			t.Errorf("%s missing or not the OFL", lic)
+		}
+	}
+	// The system stacks stay as the fallback.
+	tokens := get(t, h, "/static/css/tokens.css").Body.String()
+	if !strings.Contains(tokens, `--font-sans: "Instrument Sans", ui-sans-serif, system-ui`) {
+		t.Error("tokens.css lost the system font fallback")
 	}
 }

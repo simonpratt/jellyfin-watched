@@ -1,0 +1,4 @@
+{{/* poster: the 48×72 cover slot. Takes a Poster. Only the generated
+     placeholder for now: the title's initial on a plain block. Images and
+     the missing-poster variant arrive in ticket 05. */}}
+{{define "poster"}}<div class="poster poster--placeholder" aria-hidden="true"><span class="poster__initial">{{.Initial}}</span></div>{{end}}

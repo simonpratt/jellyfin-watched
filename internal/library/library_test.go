@@ -29,8 +29,9 @@ func TestCacheEmptyUntilRefreshed(t *testing.T) {
 }
 
 func TestRefreshStoresSnapshot(t *testing.T) {
+	added := time.Date(2023, 11, 9, 8, 0, 0, 0, time.UTC)
 	src := &fakeSource{movies: []jellyfin.Item{
-		{ID: "a", Name: "Alien", Type: "Movie", ProductionYear: 1979},
+		{ID: "a", Name: "Alien", Type: "Movie", ProductionYear: 1979, DateCreated: added},
 		{ID: "b", Name: "Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb", Type: "Movie", ProductionYear: 1964},
 	}}
 	c := NewCache(src)
@@ -45,7 +46,7 @@ func TestRefreshStoresSnapshot(t *testing.T) {
 		t.Fatal("no snapshot after refresh")
 	}
 	want := []Movie{
-		{ID: "a", Title: "Alien", Year: 1979},
+		{ID: "a", Title: "Alien", Year: 1979, Added: added},
 		{ID: "b", Title: "Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb", Year: 1964},
 	}
 	if !reflect.DeepEqual(snap.Movies, want) || !snap.LoadedAt.Equal(now) {

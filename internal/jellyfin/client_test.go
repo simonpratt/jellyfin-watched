@@ -60,7 +60,8 @@ func (f *fakeJellyfin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func movies(n int) []Item {
 	out := make([]Item, n)
 	for i := range out {
-		out[i] = Item{ID: fmt.Sprintf("id%d", i), Name: fmt.Sprintf("Movie %d", i), Type: "Movie", ProductionYear: 2000 + i}
+		out[i] = Item{ID: fmt.Sprintf("id%d", i), Name: fmt.Sprintf("Movie %d", i), Type: "Movie", ProductionYear: 2000 + i,
+			DateCreated: time.Date(2024, time.Month(i%12+1), 14, 10, 22, 33, 786570500, time.UTC)}
 	}
 	return out
 }
@@ -102,12 +103,31 @@ func TestMoviesPaginatesAndSendsOnlyAuthorizedGETs(t *testing.T) {
 		if q.Get("includeItemTypes") != "Movie" || q.Get("recursive") != "true" {
 			t.Errorf("request %d query = %s", i, r.URL.RawQuery)
 		}
+		if !strings.Contains(","+q.Get("fields")+",", ",DateCreated,") {
+			t.Errorf("request %d does not ask for DateCreated: %s", i, r.URL.RawQuery)
+		}
 		if q.Get("startIndex") != strconv.Itoa(i*3) || q.Get("limit") != "3" {
 			t.Errorf("request %d pagination = %s", i, r.URL.RawQuery)
 		}
 		if strings.Contains(r.URL.String(), testKey) {
 			t.Errorf("API key sent in URL: %s", r.URL)
 		}
+	}
+}
+
+// Jellyfin 12.1.0 only includes DateCreated when fields=DateCreated is asked
+// for, and sends it with seven fractional digits.
+func TestItemDecodesJellyfinDateCreated(t *testing.T) {
+	var it Item
+	if err := json.Unmarshal([]byte(`{"Id":"x","DateCreated":"2026-04-05T21:22:25.7865705Z"}`), &it); err != nil {
+		t.Fatal(err)
+	}
+	want := time.Date(2026, 4, 5, 21, 22, 25, 786570500, time.UTC)
+	if !it.DateCreated.Equal(want) {
+		t.Errorf("DateCreated = %v, want %v", it.DateCreated, want)
+	}
+	if err := json.Unmarshal([]byte(`{"Id":"y"}`), &it); err != nil {
+		t.Fatal(err)
 	}
 }
 
