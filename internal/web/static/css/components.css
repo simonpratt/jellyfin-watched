@@ -1,0 +1,7 @@
+/*
+ * Component styles, one commented section per component, in the same order
+ * as templates/components/. Tokens only: every value is var(--…) from
+ * tokens.css (added in ticket 02). Unstyled until then.
+ */
+
+/* movie-row */

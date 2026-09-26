@@ -1,0 +1,13 @@
+{{define "content"}}
+<h1>Movies</h1>
+{{if not .Loaded}}
+<p>The library hasn't loaded yet.</p>
+{{else if not .Movies}}
+<p>No movies in the library.</p>
+{{else}}
+<p>{{.Count}}</p>
+<ul class="movie-list">
+{{range .Movies}}{{template "movie-row" .}}{{end}}
+</ul>
+{{end}}
+{{end}}

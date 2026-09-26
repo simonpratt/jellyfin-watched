@@ -4,13 +4,13 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] All settings from REQUIREMENTS.md §8 are read from environment variables with the documented defaults; there is no config file and no required flag
-- [ ] Startup exits with a clear error naming any missing required variable
-- [ ] The Jellyfin client exposes only a GET method and sends `Authorization: MediaBrowser Token=<key>`
-- [ ] The movie list is fetched with pagination and stored in an in-memory cache; the page reads from the cache, never directly from Jellyfin
-- [ ] htmx, templates and CSS are embedded in the binary; the page loads nothing from a CDN
-- [ ] Tests against a fake Jellyfin (`httptest`) prove every outbound request is a GET
-- [ ] Tests prove the API key never appears in rendered HTML or log output
-- [ ] `go vet` and `go test` pass
+- [x] All settings from REQUIREMENTS.md §8 are read from environment variables with the documented defaults; there is no config file and no required flag
+- [x] Startup exits with a clear error naming any missing required variable
+- [x] The Jellyfin client exposes only a GET method and sends `Authorization: MediaBrowser Token=<key>`
+- [x] The movie list is fetched with pagination and stored in an in-memory cache; the page reads from the cache, never directly from Jellyfin
+- [x] htmx, templates and CSS are embedded in the binary; the page loads nothing from a CDN
+- [x] Tests against a fake Jellyfin (`httptest`) prove every outbound request is a GET
+- [x] Tests prove the API key never appears in rendered HTML or log output
+- [x] `go vet` and `go test` pass

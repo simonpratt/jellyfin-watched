@@ -1,0 +1,5 @@
+{{/* movie-row: one movie in the Movies list. Takes a MovieRow. */}}
+{{define "movie-row"}}<li class="movie-row">
+<span class="movie-row__title">{{.Title}}</span>{{if .Year}} <span class="movie-row__year">{{.Year}}</span>{{end}}
+</li>
+{{end}}
