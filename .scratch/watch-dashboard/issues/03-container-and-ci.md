@@ -4,12 +4,12 @@
 
 **Blocked by:** 01 (Walking skeleton)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The Dockerfile is multi-stage, the final image is minimal (distroless/static or scratch plus CA certs), and it runs as non-root
-- [ ] The image starts with only environment variables set
-- [ ] The workflow runs `go vet` and `go test` on every push and pull request
-- [ ] Pushes to the main branch publish `ghcr.io/...:latest` and `:<commit-sha>` for linux/amd64 and linux/arm64
-- [ ] `v*` tags also publish the image under that version tag
-- [ ] An example `docker-compose.yml` is committed, with every variable from REQUIREMENTS.md §8 shown or commented
-- [ ] Note: the repo has no GitHub remote yet, so checking publication end to end needs one
+- [x] The Dockerfile is multi-stage, the final image is minimal (distroless/static or scratch plus CA certs), and it runs as non-root
+- [x] The image starts with only environment variables set
+- [x] The workflow runs `go vet` and `go test` on every push and pull request
+- [x] Pushes to the main branch publish `ghcr.io/...:latest` and `:<commit-sha>` for linux/amd64 and linux/arm64
+- [x] `v*` tags also publish the image under that version tag
+- [x] An example `docker-compose.yml` is committed, with every variable from REQUIREMENTS.md §8 shown or commented
+- [x] Note: the repo has no GitHub remote yet, so checking publication end to end needs one (workflow linted with actionlint and its steps run locally; the ghcr.io push itself is unverified until a remote exists)

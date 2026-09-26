@@ -1,0 +1,31 @@
+# Example: run Spool next to Jellyfin.
+#
+#   cp .env.example .env    # fill in JELLYFIN_API_KEY (never commit it)
+#   docker compose up -d
+#
+# All configuration is through environment variables (REQUIREMENTS.md §8).
+services:
+  spool:
+    image: ghcr.io/owner/jellyfin-watched:latest # replace owner with your GitHub user or org (lowercase)
+    # build: .                                   # or build from this checkout
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Required: base URL of your Jellyfin server (no trailing slash).
+      JELLYFIN_URL: ${JELLYFIN_URL:-http://jellyfin:8096}
+      # Required: admin API key (Jellyfin Dashboard -> API Keys). Read from .env.
+      JELLYFIN_API_KEY: ${JELLYFIN_API_KEY:?set JELLYFIN_API_KEY in .env}
+      # Optional: address and port the dashboard listens on inside the container.
+      # LISTEN_ADDR: ":8080"
+      # Optional: minimum minutes between data refreshes.
+      # REFRESH_MINUTES: "30"
+      # Optional: show Season 0 (Specials).
+      # INCLUDE_SPECIALS: "false"
+      # Optional: require this password to view the dashboard.
+      # DASHBOARD_PASSWORD: ""
+      # Optional: timeout in seconds for each request to Jellyfin.
+      # JELLYFIN_TIMEOUT_SECONDS: "10"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true

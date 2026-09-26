@@ -1,0 +1,13 @@
+# Keep the build context to what the Go build needs. .env holds the real
+# API key and must never reach an image layer.
+.env
+.env.*
+!.env.example
+.git
+.github
+.scratch
+designs
+tmp
+*.md
+docker-compose.yml
+Dockerfile
