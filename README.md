@@ -1,10 +1,10 @@
-# Spool
+# Jellyfin-watched
 
 A small, self-hosted, **read-only** dashboard for a Jellyfin server. It lists every movie and TV season with its cover art and size on disk, and shows which users have finished it or are partway through.
 
 ## Deploy
 
-Spool is a single container, configured entirely through environment variables. It needs a Jellyfin admin API key (Jellyfin Dashboard → API Keys).
+Jellyfin-watched is a single container, configured entirely through environment variables. It needs a Jellyfin admin API key (Jellyfin Dashboard → API Keys).
 
 ```bash
 cp .env.example .env      # set JELLYFIN_URL and JELLYFIN_API_KEY

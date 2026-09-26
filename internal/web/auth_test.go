@@ -194,7 +194,7 @@ func TestPasswordScreen(t *testing.T) {
 	rec := doWithCookie(t, h, "GET", "/login?next=%2Ftv%3Fq%3Dan", nil, nil)
 	body := rec.Body.String()
 	assertContains(t, body,
-		"<title>Enter the password · Spool</title>",
+		"<title>Enter the password · Jellyfin-watched</title>",
 		`<form class="password-form" method="post" action="/login"`,
 		"Enter the password",
 		"This dashboard is password protected. The password is set in the server configuration.",

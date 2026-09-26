@@ -1,11 +1,11 @@
-# Example: run Spool next to Jellyfin.
+# Example: run Jellyfin-watched next to Jellyfin.
 #
 #   cp .env.example .env    # fill in JELLYFIN_API_KEY (never commit it)
 #   docker compose up -d
 #
 # All configuration is through environment variables (REQUIREMENTS.md §8).
 services:
-  spool:
+  jellyfin-watched:
     image: ghcr.io/owner/jellyfin-watched:latest # replace owner with your GitHub user or org (lowercase)
     # build: .                                   # or build from this checkout
     restart: unless-stopped

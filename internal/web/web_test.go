@@ -184,7 +184,7 @@ func TestHeaderHasMarkNameTabsAndRefreshSlot(t *testing.T) {
 	body := get(t, h, "/movies").Body.String()
 	for _, want := range []string{
 		`class="app-header__mark"`,
-		`>Spool<`,
+		`>Jellyfin-watched<`,
 		`<nav id="app-tabs" class="app-header__tabs" aria-label="Library">`,
 		`<a class="app-header__tab" href="/movies" aria-current="page">Movies <span class="app-header__count">1,284</span></a>`,
 		`<a class="app-header__tab" href="/tv">TV shows <span class="app-header__count">212</span></a>`,
@@ -212,7 +212,7 @@ func TestTVShowsPageShell(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		`<title>TV shows · Spool</title>`,
+		`<title>TV shows · Jellyfin-watched</title>`,
 		`<a class="app-header__tab" href="/tv" aria-current="page">TV shows <span class="app-header__count">0</span></a>`,
 		`<h1 class="page-head__title">TV shows</h1>`,
 	} {

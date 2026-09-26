@@ -1,4 +1,4 @@
-# Spool: Jellyfin watch-completion dashboard
+# Jellyfin-watched: Jellyfin watch-completion dashboard
 
 A read-only Go + htmx dashboard showing which Jellyfin users have completed each movie and TV season.
 
@@ -7,7 +7,7 @@ A read-only Go + htmx dashboard showing which Jellyfin users have completed each
 - `REQUIREMENTS.md`: functional and technical requirements. Wins any conflict.
 - `DESIGN.md`: the design brief. **The app is dark mode only**, so skip the brief's light-theme requirements.
 - `designs/tokens.css`: every colour, size and space value.
-- `designs/*.png`: the designer's mockups (dark, @2x). Read the PNG for any screen or component you touch before writing markup. `Components@2x.png` and `States@2x.png` cover the variants and states.
+- `designs/*.png`: the designer's mockups (dark, @2x). They call the app "Spool"; its name is now "Jellyfin-watched". Read the PNG for any screen or component you touch before writing markup. `Components@2x.png` and `States@2x.png` cover the variants and states.
 - `.scratch/watch-dashboard/issues/`: tickets, each with "Blocked by", `**Status:**` (`ready-for-agent`, `done` or `wont-do`) and acceptance criteria. A ticket marked `wont-do` stays unbuilt.
 - Jellyfin API behaviour confirmed against the real server (version 12.1.0) is recorded in code comments next to each call in `internal/jellyfin/client.go`. Read them before relying on a field or flag. For example, completion is worked out per episode because the season-level `Played` flag is wrong on this server.
 

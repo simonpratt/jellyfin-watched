@@ -22,7 +22,7 @@ import (
 
 const (
 	loginPath         = "/login"
-	sessionCookieName = "spool_session"
+	sessionCookieName = "jellyfin_watched_session"
 	// sessionTTL is how long a session lasts before the password is asked
 	// for again.
 	sessionTTL = 30 * 24 * time.Hour
@@ -72,7 +72,7 @@ func (g *gate) correct(password string) bool {
 // expiry>", the MAC in unpadded base64url.
 func (g *gate) sign(expiry string) string {
 	m := hmac.New(sha256.New, g.key)
-	m.Write([]byte("spool-session-v1." + expiry))
+	m.Write([]byte("jellyfin-watched-session-v1." + expiry))
 	return base64.RawURLEncoding.EncodeToString(m.Sum(nil))
 }
 

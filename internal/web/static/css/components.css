@@ -1,5 +1,5 @@
 /*
- * Spool styles. Tokens only: every colour, size and space is var(--…) from
+ * Jellyfin-watched styles. Tokens only: every colour, size and space is var(--…) from
  * tokens.css. Hairlines are 1px borders; the selected tab's underline is 2px
  * (DESIGN tokens sheet: "2 px accent").
  *
@@ -110,7 +110,7 @@ a {
 }
 
 /* ------------------------------------------------------------ app-header */
-/* Spool mark and name, Movies / TV shows tabs, refresh control on the right. */
+/* The mark and name, Movies / TV shows tabs, refresh control on the right. */
 
 /* position: the refresh control's loading hairline sits on the bottom edge;
    overflow-x clips it as it slides out of either side. */
@@ -296,7 +296,7 @@ a {
 }
 
 /* ---------------------------------------------------------- password-page */
-/* The password screen: no header. The Spool mark and name, the heading,
+/* The password screen: no header. The mark and name, the heading,
    what the password is, then the password-form, in one column centred on
    the page. The column is nine --space-10 (360px) wide, as in the
    Password mockup; the design has no token for it. */
@@ -461,7 +461,7 @@ a {
 /* ---------------------------------------------------------- empty-state */
 /* In place of a list: a headline over plain lines of detail, lined up with
    the list's titles (poster column + gap in from the page edge). --loading:
-   the first load, centred under the Spool reel. */
+   the first load, centred under the reel mark. */
 
 .empty-state {
   padding: var(--space-12) var(--space-8);

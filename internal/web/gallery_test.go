@@ -22,7 +22,7 @@ const galleryTmpl = `{{define "gallery"}}<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Component gallery · Spool</title>
+<title>Component gallery · Jellyfin-watched</title>
 <link rel="stylesheet" href="../internal/web/static/css/tokens.css">
 <link rel="stylesheet" href="../internal/web/static/css/components.css">
 <style>

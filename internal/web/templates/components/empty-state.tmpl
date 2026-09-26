@@ -1,10 +1,10 @@
 {{/* empty-state: shown in place of a list. Default: a headline and lines
      of detail, aligned with the list's titles (empty library). --loading:
-     centred under the Spool reel (first load). An Action button goes under
+     centred under the reel mark (first load). An Action button goes under
      the lines ("Clear search" when a search matches nothing). Takes an
      EmptyState. */}}
 {{define "empty-state"}}<div class="empty-state{{if .Loading}} empty-state--loading{{end}}">
-{{if .Loading}}{{template "spool-mark" "empty-state__mark"}}{{end}}
+{{if .Loading}}{{template "brand-mark" "empty-state__mark"}}{{end}}
 <h2 class="empty-state__headline">{{.Headline}}</h2>
 {{range .Lines}}<p class="empty-state__line">{{.}}</p>
 {{end}}{{if .Action}}<div class="empty-state__action">{{template "button" .Action}}</div>{{end}}</div>

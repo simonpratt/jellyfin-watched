@@ -129,7 +129,7 @@ func newNotice(st library.Status, now time.Time) *Notice {
 
 // EmptyState is the view model for the empty-state component, shown in
 // place of a list. Loading is the first-load variant, centred under the
-// Spool reel.
+// reel mark.
 type EmptyState struct {
 	Loading  bool
 	Headline string

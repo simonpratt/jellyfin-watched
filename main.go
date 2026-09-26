@@ -1,4 +1,4 @@
-// Command jellyfin-watched serves Spool, a read-only dashboard showing which
+// Command jellyfin-watched serves a read-only dashboard showing which
 // Jellyfin users have completed each movie and TV season.
 //
 // All configuration comes from environment variables (REQUIREMENTS.md §8).
