@@ -54,6 +54,7 @@ func NewHandler(lib Snapshots, posters Posters, logger *slog.Logger) (http.Handl
 	mux.Handle("GET /{$}", http.RedirectHandler("/movies", http.StatusFound))
 	mux.HandleFunc("GET /movies", h.movies)
 	mux.HandleFunc("GET /tv", h.tv)
+	mux.HandleFunc("GET "+seriesPath+"{id}", h.series)
 	mux.HandleFunc("GET "+posterPath+"{id}/{tag}", h.poster)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
 	return mux, nil
@@ -96,9 +97,36 @@ func (h *handler) movies(w http.ResponseWriter, r *http.Request) {
 	h.render(w, "movies", "layout", newMoviesPage(snap, ok))
 }
 
+// tv serves the TV shows page. ?seasons=all or none expands or collapses
+// every series ("Expand all"). An htmx request gets the page's content
+// alone, which "Expand all" swaps into <main>; a normal load, or htmx
+// restoring a page missing from its history cache, gets the whole page.
 func (h *handler) tv(w http.ResponseWriter, r *http.Request) {
 	snap, ok := h.lib.Snapshot()
-	h.render(w, "tv", "layout", newTVPage(snap, ok))
+	block := "layout"
+	if r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true" {
+		block = "content"
+	}
+	w.Header().Add("Vary", "HX-Request")
+	h.render(w, "tv", block, newTVPage(snap, ok, parseExpansion(r.URL.Query().Get("seasons"))))
+}
+
+// series serves one series row as an htmx fragment, with its seasons shown
+// (?seasons=show) or hidden (?seasons=hide). The row's disclosure button
+// swaps it in place of itself.
+func (h *handler) series(w http.ResponseWriter, r *http.Request) {
+	snap, ok := h.lib.Snapshot()
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	sr, ok := snap.SeriesByID(r.PathValue("id"))
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	row := newSeriesRow(sr, newUserTags(snap.Users), len(snap.Users), parseExpansion(r.URL.Query().Get("seasons")))
+	h.render(w, "tv", "series-row", row)
 }
 
 // poster serves a poster from the cache, fetching it from Jellyfin on first

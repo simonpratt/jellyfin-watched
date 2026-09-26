@@ -46,7 +46,7 @@ func run(ctx context.Context, getenv func(string) string, logOut io.Writer, onLi
 	if err != nil {
 		return err
 	}
-	cache := library.NewCache(client)
+	cache := library.NewCache(client, library.Options{IncludeSpecials: cfg.IncludeSpecials})
 
 	handler, err := web.NewHandler(cache, artwork.New(client), logger)
 	if err != nil {
@@ -76,7 +76,7 @@ func run(ctx context.Context, getenv func(string) string, logOut io.Writer, onLi
 			return
 		}
 		snap, _ := cache.Snapshot()
-		logger.Info("library loaded", "movies", len(snap.Movies), "took", time.Since(start).Round(time.Millisecond))
+		logger.Info("library loaded", "movies", len(snap.Movies), "series", len(snap.Series), "took", time.Since(start).Round(time.Millisecond))
 	}()
 
 	serveErr := make(chan error, 1)

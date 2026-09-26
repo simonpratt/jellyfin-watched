@@ -28,13 +28,33 @@ func (f *fakeSource) Movies(context.Context) ([]jellyfin.Item, error) {
 	return f.movies, f.err
 }
 
+func (f *fakeSource) Series(context.Context) ([]jellyfin.Item, error) {
+	f.calls++
+	return nil, f.err
+}
+
+func (f *fakeSource) Seasons(context.Context) ([]jellyfin.Item, error) {
+	f.calls++
+	return nil, f.err
+}
+
+func (f *fakeSource) Episodes(context.Context) ([]jellyfin.Item, error) {
+	f.calls++
+	return nil, f.err
+}
+
+func (f *fakeSource) UserEpisodes(context.Context, string) ([]jellyfin.Item, error) {
+	f.calls++
+	return nil, f.err
+}
+
 func (f *fakeSource) PlayedMovieIDs(_ context.Context, userID string) ([]string, error) {
 	f.calls++
 	return f.played[userID], f.err
 }
 
 func TestCacheEmptyUntilRefreshed(t *testing.T) {
-	c := NewCache(&fakeSource{})
+	c := NewCache(&fakeSource{}, Options{})
 	if _, ok := c.Snapshot(); ok {
 		t.Error("new cache reports a snapshot")
 	}
@@ -46,7 +66,7 @@ func TestRefreshStoresSnapshot(t *testing.T) {
 		{ID: "a", Name: "Alien", Type: "Movie", ProductionYear: 1979, DateCreated: added},
 		{ID: "b", Name: "Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb", Type: "Movie", ProductionYear: 1964},
 	}}
-	c := NewCache(src)
+	c := NewCache(src, Options{})
 	now := time.Date(2026, 9, 26, 10, 0, 0, 0, time.UTC)
 	c.now = func() time.Time { return now }
 
@@ -68,14 +88,14 @@ func TestRefreshStoresSnapshot(t *testing.T) {
 	// Reading the snapshot does not touch the source.
 	c.Snapshot()
 	c.Snapshot()
-	if src.calls != 2 {
-		t.Errorf("source called %d times, want 2 (users, movies)", src.calls)
+	if src.calls != 5 {
+		t.Errorf("source called %d times, want 5 (users, movies, series, seasons, episodes)", src.calls)
 	}
 }
 
 func TestFailedRefreshKeepsPreviousSnapshot(t *testing.T) {
 	src := &fakeSource{movies: []jellyfin.Item{{ID: "a", Name: "Alien"}}}
-	c := NewCache(src)
+	c := NewCache(src, Options{})
 	if err := c.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}

@@ -107,6 +107,29 @@ type Item struct {
 	// MediaSources lists the item's versions (e.g. 1080p and 4K). Only
 	// returned when the request asks for fields=MediaSources.
 	MediaSources []MediaSource `json:"MediaSources,omitempty"`
+
+	// SeriesID is the series a season or episode belongs to. Confirmed
+	// against Jellyfin 12.1.0: returned on seasons and episodes by default.
+	SeriesID string `json:"SeriesId,omitempty"`
+	// SeasonID is the season an episode belongs to. Confirmed against
+	// Jellyfin 12.1.0: absent for an episode Jellyfin couldn't place in a
+	// season (it then has SeasonName "Season Unknown", and its series has a
+	// Virtual "Season Unknown" season with no IndexNumber and no episodes).
+	SeasonID   string `json:"SeasonId,omitempty"`
+	SeasonName string `json:"SeasonName,omitempty"`
+	// IndexNumber is a season's number: 0 for Specials, absent (nil) for
+	// "Season Unknown".
+	IndexNumber *int `json:"IndexNumber,omitempty"`
+	// UserData is the requesting user's watch state; only returned when the
+	// request has a userId.
+	UserData *UserData `json:"UserData,omitempty"`
+}
+
+// UserData is one user's watch state for an item.
+type UserData struct {
+	// Played is true once the user has finished the item or marked it
+	// watched manually.
+	Played bool `json:"Played"`
 }
 
 // PrimaryImageTag is the tag of the item's poster, or "" if it has none.
@@ -208,6 +231,67 @@ func (c *Client) PlayedMovieIDs(ctx context.Context, userID string) ([]string, e
 		ids[i] = it.ID
 	}
 	return ids, nil
+}
+
+// Series returns every series in the library, sorted by Jellyfin's sort
+// name.
+func (c *Client) Series(ctx context.Context) ([]Item, error) {
+	return c.items(ctx, url.Values{
+		"includeItemTypes": {"Series"},
+		"recursive":        {"true"},
+		"sortBy":           {"SortName"},
+		"sortOrder":        {"Ascending"},
+		"fields":           {"DateCreated"},
+	})
+}
+
+// Seasons returns every season of every series, including Specials (season
+// 0) and seasons with no episodes on disk.
+//
+// Confirmed against Jellyfin 12.1.0: each season has SeriesId, IndexNumber
+// and ImageTags without asking for any fields; ImageTags has no "Primary"
+// key when the season has no poster of its own. Jellyfin can list two
+// "Season 1"s for one series (e.g. "Season 1" and "Season 01" folders), one
+// of them with no episodes.
+func (c *Client) Seasons(ctx context.Context) ([]Item, error) {
+	return c.items(ctx, url.Values{
+		"includeItemTypes": {"Season"},
+		"recursive":        {"true"},
+	})
+}
+
+// Episodes returns every episode that exists in the library, with its file
+// sizes. It is fetched once per refresh, not once per user.
+//
+// Confirmed against Jellyfin 12.1.0: with fields=MediaSources each episode
+// has one MediaSources entry per file with Size in bytes, as for movies;
+// isMissing=false is accepted without a userId. The test server had no
+// missing episodes, so the filter itself couldn't be seen removing any.
+func (c *Client) Episodes(ctx context.Context) ([]Item, error) {
+	return c.items(ctx, url.Values{
+		"includeItemTypes": {"Episode"},
+		"recursive":        {"true"},
+		"isMissing":        {"false"},
+		"fields":           {"MediaSources"},
+		"enableImages":     {"false"},
+	})
+}
+
+// UserEpisodes returns the episodes one user can see, each with their
+// UserData.Played, in one paginated request rather than one per season.
+//
+// Confirmed against Jellyfin 12.1.0: UserData is returned with
+// enableUserData=true and a userId, and a user only gets the episodes of
+// libraries they can access (two of six users saw 616 of 626 episodes).
+func (c *Client) UserEpisodes(ctx context.Context, userID string) ([]Item, error) {
+	return c.items(ctx, url.Values{
+		"userId":           {userID},
+		"includeItemTypes": {"Episode"},
+		"recursive":        {"true"},
+		"isMissing":        {"false"},
+		"enableUserData":   {"true"},
+		"enableImages":     {"false"},
+	})
 }
 
 // maxImageBytes caps a poster download. A 96×144 poster is 5–15 KB.

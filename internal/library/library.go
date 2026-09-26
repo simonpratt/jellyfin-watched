@@ -37,19 +37,44 @@ type Movie struct {
 type Snapshot struct {
 	Users    []User // in Jellyfin's /Users order
 	Movies   []Movie
+	Series   []Series // in Jellyfin's sort-name order
 	LoadedAt time.Time
 }
 
-// PosterTag returns the poster tag of the item with this ID, and false if
-// the item isn't in the snapshot or has no poster. It is how the dashboard
-// limits poster requests to items it knows about.
+// PosterTag returns the poster tag of the movie, series or season with this
+// ID, and false if the item isn't in the snapshot or has no poster of its
+// own. It is how the dashboard limits poster requests to items it knows
+// about.
 func (s Snapshot) PosterTag(id string) (string, bool) {
+	if id == "" {
+		return "", false
+	}
 	for _, m := range s.Movies {
 		if m.ID == id {
 			return m.PosterTag, m.PosterTag != ""
 		}
 	}
+	for _, sr := range s.Series {
+		if sr.ID == id {
+			return sr.PosterTag, sr.PosterTag != ""
+		}
+		for _, se := range sr.Seasons {
+			if se.PosterID == id {
+				return se.PosterTag, se.PosterTag != ""
+			}
+		}
+	}
 	return "", false
+}
+
+// SeriesByID returns the series with this ID, and false if there is none.
+func (s Snapshot) SeriesByID(id string) (Series, bool) {
+	for _, sr := range s.Series {
+		if sr.ID == id {
+			return sr, true
+		}
+	}
+	return Series{}, false
 }
 
 // Source is where the cache gets its data; *jellyfin.Client satisfies it.
@@ -57,19 +82,31 @@ type Source interface {
 	Users(ctx context.Context) ([]jellyfin.User, error)
 	Movies(ctx context.Context) ([]jellyfin.Item, error)
 	PlayedMovieIDs(ctx context.Context, userID string) ([]string, error)
+	Series(ctx context.Context) ([]jellyfin.Item, error)
+	Seasons(ctx context.Context) ([]jellyfin.Item, error)
+	Episodes(ctx context.Context) ([]jellyfin.Item, error)
+	UserEpisodes(ctx context.Context, userID string) ([]jellyfin.Item, error)
+}
+
+// Options are the library settings from the environment.
+type Options struct {
+	// IncludeSpecials shows Season 0 (INCLUDE_SPECIALS). Specials count
+	// towards a series' size either way.
+	IncludeSpecials bool
 }
 
 // Cache holds the latest snapshot. Refresh builds a new snapshot and swaps it
 // in whole, so readers never see partial data.
 type Cache struct {
 	src  Source
+	opts Options
 	snap atomic.Pointer[Snapshot]
 	now  func() time.Time
 }
 
 // NewCache returns an empty cache backed by src.
-func NewCache(src Source) *Cache {
-	return &Cache{src: src, now: time.Now}
+func NewCache(src Source, opts Options) *Cache {
+	return &Cache{src: src, opts: opts, now: time.Now}
 }
 
 // Snapshot returns the current snapshot, or false if none has loaded yet.
@@ -114,11 +151,16 @@ func (c *Cache) Refresh(ctx context.Context) error {
 			}
 		}
 	}
-	c.snap.Store(&Snapshot{Users: users, Movies: movies, LoadedAt: c.now()})
+	series, err := fetchTV(ctx, c.src, users, c.opts)
+	if err != nil {
+		return err
+	}
+	c.snap.Store(&Snapshot{Users: users, Movies: movies, Series: series, LoadedAt: c.now()})
 	return nil
 }
 
-// totalSize adds up the sizes of a movie's versions. If any version has no
+// totalSize adds up the sizes of an item's versions (a movie's, or an
+// episode's). If any version has no
 // reported size the total is unknown (0), rather than a sum that silently
 // leaves a file out.
 func totalSize(sources []jellyfin.MediaSource) int64 {

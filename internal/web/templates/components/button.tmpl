@@ -1,3 +1,19 @@
 {{/* button: takes a Button. Default is outlined; Primary fills with the
-     accent (password screen only). */}}
-{{define "button"}}<button type="button" class="button{{if .Primary}} button--primary{{end}}">{{.Label}}</button>{{end}}
+     accent (password screen only); Disclosure is borderless text after a
+     chevron that points right when collapsed and down when expanded
+     ("Show 35 seasons" / "Hide seasons"). Icon draws "expand-all" or
+     "collapse-all" before the label. The htmx fields fetch a fragment; the
+     ID stays the same in the fragment, so htmx keeps focus on the button. */}}
+{{define "button"}}<button type="button"{{if .ID}} id="{{.ID}}"{{end}} class="button{{if .Primary}} button--primary{{end}}{{if .Disclosure}} button--disclosure{{end}}"
+{{- if .Expanded}} aria-expanded="{{.Expanded}}"{{end}}{{if .Controls}} aria-controls="{{.Controls}}"{{end}}
+{{- if .Get}} hx-get="{{.Get}}"{{end}}{{if .Target}} hx-target="{{.Target}}"{{end}}{{if .Swap}} hx-swap="{{.Swap}}"{{end}}{{if .PushURL}} hx-push-url="true"{{end}}>
+{{- if .Disclosure}}{{if eq .Expanded "true"}}{{template "button-icon" "chevron-down"}}{{else}}{{template "button-icon" "chevron-right"}}{{end}}
+{{- else if .Icon}}{{template "button-icon" .Icon}}{{end}}{{.Label}}</button>{{end}}
+
+{{/* button-icon: a 16×16 stroke icon in currentColor. Takes its name. */}}
+{{define "button-icon"}}<svg class="button__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+{{- if eq . "chevron-right"}}<path d="M6.25 4.5 9.75 8l-3.5 3.5"/>
+{{- else if eq . "chevron-down"}}<path d="M4.5 6.25 8 9.75l3.5-3.5"/>
+{{- else if eq . "expand-all"}}<path d="M5 3.5 8 6.5l3-3M5 9.5l3 3 3-3"/>
+{{- else if eq . "collapse-all"}}<path d="M5 6.5 8 3.5l3 3M5 12.5l3-3 3 3"/>
+{{- end}}</svg>{{end}}

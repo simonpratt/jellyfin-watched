@@ -38,12 +38,14 @@ const galleryTmpl = `{{define "gallery"}}<!doctype html>
 <section><h2 class="gallery__label">Header · movies current</h2>{{template "app-header" .HeaderMovies}}</section>
 <section><h2 class="gallery__label">Header · TV shows current, before first load</h2>{{template "app-header" .HeaderTV}}</section>
 <section><h2 class="gallery__label">Poster · image, image that failed or is still loading, missing, generated placeholder</h2><div class="gallery__row">{{range .Posters}}{{template "poster" .}}{{end}}</div></section>
-<section><h2 class="gallery__label">Button · default, primary</h2><div class="gallery__row">{{range .Buttons}}{{template "button" .}}{{end}}</div></section>
+<section><h2 class="gallery__label">Button · default, primary, disclosure collapsed and expanded, expand all, collapse all</h2><div class="gallery__row">{{range .Buttons}}{{template "button" .}}{{end}}</div></section>
 <section><h2 class="gallery__label">User tag · all 10 users, then user 11 wrapping to hue 1</h2><div class="gallery__row">{{range .Tags}}{{template "user-tag" .}}{{end}}</div></section>
 <section><h2 class="gallery__label">Size · movie, 4K remux, series total, unknown, sum with unknowns</h2><div class="gallery__sizes">{{range .Sizes}}<div>{{template "size" .}}</div>{{end}}</div></section>
 <section><h2 class="gallery__label">User group · 4 users, 6 users collapsed, all 10 open</h2><div class="gallery__stack">{{range .Groups}}<div>{{template "user-group" .}}</div>{{end}}</div></section>
-<section><h2 class="gallery__label">Completion · nobody</h2>{{template "completion" .Nobody}}</section>
+<section><h2 class="gallery__label">User tag · in progress: 9 / 12, 1 / 200, 20-character name, 1,199 / 1,200</h2><div class="gallery__row">{{range .ProgressTags}}{{template "user-tag" .}}{{end}}</div></section>
+<section><h2 class="gallery__label">Completion · nobody; completed then in progress; in progress only</h2><div class="gallery__stack">{{template "completion" .Nobody}}{{range .Completions}}{{template "completion" .}}{{end}}</div></section>
 <section><h2 class="gallery__label">Movie row</h2><ul class="movie-list">{{range .Rows}}{{template "movie-row" .}}{{end}}</ul></section>
+<section><h2 class="gallery__label">Series row · expanded, all 10 users, collapsed with 35 seasons, unknown sizes and nobody, missing poster with no seasons</h2><ul class="series-list">{{range .SeriesRows}}{{template "series-row" .}}{{end}}</ul></section>
 </div>
 </body>
 </html>
@@ -58,6 +60,9 @@ type gallery struct {
 	Sizes                  []Size
 	Groups                 []UserGroup
 	Nobody                 Completion
+	ProgressTags           []UserTag
+	Completions            []Completion
+	SeriesRows             []SeriesRow
 }
 
 // TestGallery renders every component with edge-case fixtures and writes
@@ -135,7 +140,53 @@ func TestGallery(t *testing.T) {
 		newUserGroup(ten[4:], tags, len(ten)),
 		newUserGroup(ten, tags, len(ten)),
 	}
-	g.Nobody = newCompletion(nil, tags, len(ten))
+	g.Nobody = newCompletion(nil, nil, tags, len(ten))
+
+	// TV: in-progress tags, completions, buttons and series rows.
+	longName := library.User{ID: "long", Name: "Maximiliana Oyelaran"} // 20 characters
+	tags["long"] = UserTag{Name: longName.Name, Code: userCode(longName.Name), Hue: 3}
+	progress := func(u library.User, played, available int) library.Progress {
+		return library.Progress{User: u, Played: played, Available: available}
+	}
+	for _, p := range []library.Progress{progress(ten[1], 9, 12), progress(ten[7], 1, 200), progress(longName, 1, 12), progress(ten[3], 1199, 1200)} {
+		g.ProgressTags = append(g.ProgressTags, newProgressTag(tags[p.User.ID], p))
+	}
+	g.Completions = []Completion{
+		newCompletion([]library.User{ten[0]}, []library.Progress{progress(ten[2], 3, 12), progress(ten[9], 1, 12)}, tags, len(ten)),
+		newCompletion(nil, []library.Progress{progress(ten[3], 97, 148)}, tags, len(ten)),
+	}
+	g.Buttons = append(g.Buttons,
+		Button{Label: "Show 35 seasons", Disclosure: true, Expanded: "false"},
+		Button{Label: "Hide seasons", Disclosure: true, Expanded: "true"},
+		Button{Label: "Expand all", Icon: "expand-all"},
+		Button{Label: "Collapse all", Icon: "collapse-all"})
+	seasons35 := make([]library.Season, 35)
+	for i := range seasons35 {
+		seasons35[i] = library.Season{ID: "simp" + strconv.Itoa(i), Name: "Season " + strconv.Itoa(i+1), Episodes: 22, Size: 57 * gib}
+	}
+	series := []library.Series{
+		{ID: "hxh", Title: "Hunter × Hunter", Year: 2011, PosterTag: "t", Size: 1426 * gib / 10, Seasons: []library.Season{
+			{Name: "Season 1", Episodes: 148, Size: 1426 * gib / 10, CompletedBy: []library.User{ten[8]},
+				InProgress: []library.Progress{progress(ten[3], 97, 148), progress(ten[7], 1, 148)}}}},
+		{ID: "flea", Title: "Fleabag", Year: 2016, PosterTag: "t", Size: 118 * gib / 10, Seasons: []library.Season{
+			{Name: "Season 1", Episodes: 6, Size: 59 * gib / 10, CompletedBy: ten},
+			{Name: "Season 2", Episodes: 6, Size: 59 * gib / 10, CompletedBy: ten}}},
+		{ID: "simpsons", Title: "The Simpsons", Year: 1989, PosterTag: "t", Size: 1995 * gib, Seasons: seasons35},
+		{ID: "twin", Title: "Twin Peaks", Year: 1990, PosterTag: "t", Size: 381 * gib / 10, UnknownSizes: 26, Seasons: []library.Season{
+			{Name: "Season 1", Episodes: 8, UnknownSizes: 8},
+			{Name: "Season 2", Episodes: 22, Size: 381 * gib / 10},
+			{Name: "Season 3", Episodes: 18, UnknownSizes: 18}}},
+		{ID: "none", Title: "Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb", Year: 1964},
+	}
+	for i, sr := range series {
+		row := newSeriesRow(sr, tags, len(ten), expandDefault)
+		if row.Poster.Src != "" {
+			name := "s" + strconv.Itoa(i) + ".png"
+			writeStandInPoster(t, filepath.Join(posterDir, name), i+3)
+			row.Poster.Src = "gallery-posters/" + name
+		}
+		g.SeriesRows = append(g.SeriesRows, row)
+	}
 
 	var buf bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&buf, "gallery", g); err != nil {
@@ -158,7 +209,10 @@ func TestGallery(t *testing.T) {
 	for _, want := range []string{"Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb", "button--primary", "1,284",
 		"Christopher Albrecht", "Unknown", "+ 2 unknown", "Not completed by anyone", `All <span class="user-group__count">10</span> users`,
 		`<span class="user-group__count">6</span> users`, "user-code--hue-10",
-		`class="poster poster--missing"`, `alt="Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb"`, `loading="lazy"`} {
+		`class="poster poster--missing"`, `alt="Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb"`, `loading="lazy"`,
+		"Maximiliana Oyelaran", `aria-hidden="true">1 / 200</span>`, `aria-hidden="true">1,199 / 1,200</span>`, "Show 35 seasons", "Hide seasons",
+		"Expand all", "Collapse all", `<h2 class="series-row__title">Hunter × Hunter</h2>`, `<span class="size__note">+ 26 unknown</span>`,
+		`<span class="series-row__counts">0 seasons · 0 episodes</span>`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("gallery missing %q", want)
 		}

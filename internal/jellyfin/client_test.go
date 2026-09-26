@@ -25,7 +25,12 @@ type fakeJellyfin struct {
 	movies   []Item
 	users    []User
 	played   map[string][]Item // by user ID
-	status   int
+	// byType serves requests without userId by includeItemTypes (Series,
+	// Season, Episode); anything else gets movies.
+	byType map[string][]Item
+	// userEpisodes serves each user's episodes with their UserData.
+	userEpisodes map[string][]Item
+	status       int
 }
 
 func (f *fakeJellyfin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -49,7 +54,12 @@ func (f *fakeJellyfin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 	items := f.movies
-	if uid := q.Get("userId"); uid != "" {
+	if typed, ok := f.byType[q.Get("includeItemTypes")]; ok {
+		items = typed
+	}
+	if uid := q.Get("userId"); uid != "" && q.Get("includeItemTypes") == "Episode" {
+		items = f.userEpisodes[uid]
+	} else if uid != "" {
 		if q.Get("isPlayed") != "true" {
 			http.Error(w, "fake only serves played items per user", http.StatusBadRequest)
 			return
@@ -195,7 +205,7 @@ func TestClientExposesOnlyGET(t *testing.T) {
 		names = append(names, typ.Method(i).Name)
 	}
 	sort.Strings(names)
-	want := []string{"Get", "Movies", "PlayedMovieIDs", "PrimaryImage", "Users"}
+	want := []string{"Episodes", "Get", "Movies", "PlayedMovieIDs", "PrimaryImage", "Seasons", "Series", "UserEpisodes", "Users"}
 	if !reflect.DeepEqual(names, want) {
 		t.Errorf("Client methods = %v, want %v", names, want)
 	}
@@ -366,5 +376,147 @@ func TestPrimaryImageErrors(t *testing.T) {
 	_, _ = c.PrimaryImage(context.Background(), "../../Users")
 	if got := (*reqs)[0].URL.EscapedPath(); got != "/Items/..%2F..%2FUsers/Images/Primary" {
 		t.Errorf("path = %s", got)
+	}
+}
+
+func items(n int, typ string) []Item {
+	out := make([]Item, n)
+	for i := range out {
+		out[i] = Item{ID: fmt.Sprintf("%s%d", typ, i), Name: fmt.Sprintf("%s %d", typ, i), Type: typ}
+	}
+	return out
+}
+
+// checkPages checks every request is an authorised GET for typ, paginated
+// by pageSize, with the key only in the header.
+func checkPages(t *testing.T, reqs []*http.Request, typ string, pageSize int) {
+	t.Helper()
+	for i, r := range reqs {
+		q := r.URL.Query()
+		if r.Method != http.MethodGet || r.Header.Get("Authorization") != "MediaBrowser Token="+testKey {
+			t.Errorf("request %d = %s, Authorization %q", i, r.Method, r.Header.Get("Authorization"))
+		}
+		if q.Get("includeItemTypes") != typ || q.Get("recursive") != "true" {
+			t.Errorf("request %d query = %s", i, r.URL.RawQuery)
+		}
+		if q.Get("startIndex") != strconv.Itoa(i*pageSize) || q.Get("limit") != strconv.Itoa(pageSize) {
+			t.Errorf("request %d pagination = %s", i, r.URL.RawQuery)
+		}
+		if strings.Contains(r.URL.String(), testKey) {
+			t.Errorf("API key sent in URL: %s", r.URL)
+		}
+		if q.Has("filters") || q.Has("isUnplayed") {
+			t.Errorf("request %d uses filters: %s", i, r.URL.RawQuery)
+		}
+	}
+}
+
+func TestSeriesAndSeasonsPaginate(t *testing.T) {
+	f := &fakeJellyfin{byType: map[string][]Item{"Series": items(5, "Series"), "Season": items(4, "Season")}}
+	c := newTestClient(t, f)
+	c.pageSize = 2
+
+	series, err := c.Series(context.Background())
+	if err != nil || !reflect.DeepEqual(series, f.byType["Series"]) {
+		t.Fatalf("Series = %+v, %v", series, err)
+	}
+	if len(f.requests) != 3 {
+		t.Errorf("Series made %d requests, want 3 pages", len(f.requests))
+	}
+	checkPages(t, f.requests, "Series", 2)
+	if q := f.requests[0].URL.Query(); !strings.Contains(q.Get("fields"), "DateCreated") || q.Get("sortBy") != "SortName" {
+		t.Errorf("Series query = %s", f.requests[0].URL.RawQuery)
+	}
+
+	f.requests = nil
+	seasons, err := c.Seasons(context.Background())
+	if err != nil || !reflect.DeepEqual(seasons, f.byType["Season"]) {
+		t.Fatalf("Seasons = %+v, %v", seasons, err)
+	}
+	checkPages(t, f.requests, "Season", 2)
+}
+
+// Episode sizes come from one library-wide listing per refresh, not one per
+// user: it asks for MediaSources, leaves out missing episodes and sends no
+// userId.
+func TestEpisodesAskForSizesOnceWithoutUser(t *testing.T) {
+	f := &fakeJellyfin{byType: map[string][]Item{"Episode": items(5, "Episode")}}
+	c := newTestClient(t, f)
+	c.pageSize = 3
+
+	got, err := c.Episodes(context.Background())
+	if err != nil || !reflect.DeepEqual(got, f.byType["Episode"]) {
+		t.Fatalf("Episodes = %+v, %v", got, err)
+	}
+	checkPages(t, f.requests, "Episode", 3)
+	for i, r := range f.requests {
+		q := r.URL.Query()
+		if q.Get("isMissing") != "false" || q.Has("userId") || !strings.Contains(q.Get("fields"), "MediaSources") {
+			t.Errorf("request %d query = %s", i, r.URL.RawQuery)
+		}
+	}
+}
+
+// Each user's episodes come from one paginated request carrying their watch
+// state, never one request per season.
+func TestUserEpisodesCarryWatchState(t *testing.T) {
+	eps := items(5, "Episode")
+	for i := range eps {
+		eps[i].SeasonID = "s1"
+		eps[i].SeriesID = "sr1"
+		eps[i].UserData = &UserData{Played: i%2 == 0}
+	}
+	f := &fakeJellyfin{userEpisodes: map[string][]Item{"u1": eps}}
+	c := newTestClient(t, f)
+	c.pageSize = 2
+
+	got, err := c.UserEpisodes(context.Background(), "u1")
+	if err != nil || !reflect.DeepEqual(got, eps) {
+		t.Fatalf("UserEpisodes = %+v, %v", got, err)
+	}
+	if len(f.requests) != 3 {
+		t.Errorf("made %d requests, want 3 pages", len(f.requests))
+	}
+	checkPages(t, f.requests, "Episode", 2)
+	for i, r := range f.requests {
+		q := r.URL.Query()
+		if q.Get("userId") != "u1" || q.Get("isMissing") != "false" || q.Get("enableUserData") != "true" ||
+			q.Has("parentId") || q.Has("seasonId") || q.Has("isPlayed") {
+			t.Errorf("request %d query = %s", i, r.URL.RawQuery)
+		}
+	}
+}
+
+// Shapes confirmed against Jellyfin 12.1.0: seasons and episodes carry
+// SeriesId and IndexNumber; episodes carry SeasonId (absent for an episode
+// Jellyfin couldn't place in a season) and, with a userId, UserData.Played.
+func TestItemDecodesSeasonAndEpisodeFields(t *testing.T) {
+	var season Item
+	if err := json.Unmarshal([]byte(`{"Name":"Season 1","Id":"s","IndexNumber":1,"Type":"Season","SeriesId":"sr",
+		"SeriesPrimaryImageTag":"x","ImageTags":{"Primary":"p"},"LocationType":"FileSystem"}`), &season); err != nil {
+		t.Fatal(err)
+	}
+	if season.SeriesID != "sr" || season.IndexNumber == nil || *season.IndexNumber != 1 || season.PrimaryImageTag() != "p" {
+		t.Errorf("season = %+v", season)
+	}
+	var specials Item
+	_ = json.Unmarshal([]byte(`{"Id":"s0","IndexNumber":0,"Type":"Season"}`), &specials)
+	if specials.IndexNumber == nil || *specials.IndexNumber != 0 {
+		t.Errorf("Season 0 IndexNumber = %v, want 0 (not absent)", specials.IndexNumber)
+	}
+	var unknown Item
+	_ = json.Unmarshal([]byte(`{"Name":"Season Unknown","Id":"sv","Type":"Season","LocationType":"Virtual"}`), &unknown)
+	if unknown.IndexNumber != nil {
+		t.Errorf("no IndexNumber decoded as %d", *unknown.IndexNumber)
+	}
+
+	var ep Item
+	if err := json.Unmarshal([]byte(`{"Name":"1:23:45","Id":"e","Type":"Episode","SeriesId":"sr","SeasonId":"s",
+		"SeasonName":"Season 1","ParentIndexNumber":1,"UserData":{"PlaybackPositionTicks":0,"PlayCount":2,"Played":true,"Key":"k"},
+		"MediaSources":[{"Size":1073741824}]}`), &ep); err != nil {
+		t.Fatal(err)
+	}
+	if ep.SeasonID != "s" || ep.SeasonName != "Season 1" || ep.UserData == nil || !ep.UserData.Played || ep.MediaSources[0].Size != 1<<30 {
+		t.Errorf("episode = %+v", ep)
 	}
 }

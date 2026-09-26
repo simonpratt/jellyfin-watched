@@ -52,19 +52,48 @@ func (f *fakeJellyfin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	items := []map[string]any{
-		{"Id": "1", "Name": "Alien", "Type": "Movie", "ProductionYear": 1979,
-			"ImageTags":    map[string]string{"Primary": "tag1"},
-			"MediaSources": []map[string]any{{"Id": "1", "Size": 15676630630}}},
-		{"Id": "2", "Name": "Dr. Strangelove", "Type": "Movie", "ProductionYear": 1964,
-			"MediaSources": []map[string]any{{"Id": "2"}}},
-	}
-	switch r.URL.Query().Get("userId") {
-	case "":
-	case "u2": // Anastasia has played Alien
-		items = items[:1]
-	default:
-		items = nil
+	q := r.URL.Query()
+	var items []map[string]any
+	switch q.Get("includeItemTypes") {
+	case "Movie":
+		items = []map[string]any{
+			{"Id": "1", "Name": "Alien", "Type": "Movie", "ProductionYear": 1979,
+				"ImageTags":    map[string]string{"Primary": "tag1"},
+				"MediaSources": []map[string]any{{"Id": "1", "Size": 15676630630}}},
+			{"Id": "2", "Name": "Dr. Strangelove", "Type": "Movie", "ProductionYear": 1964,
+				"MediaSources": []map[string]any{{"Id": "2"}}},
+		}
+		switch q.Get("userId") {
+		case "":
+		case "u2": // Anastasia has played Alien
+			items = items[:1]
+		default:
+			items = nil
+		}
+	case "Series":
+		items = []map[string]any{{"Id": "sr1", "Name": "Andor", "Type": "Series", "ProductionYear": 2022,
+			"ImageTags": map[string]string{"Primary": "tag-sr1"}}}
+	case "Season":
+		items = []map[string]any{
+			{"Id": "se1", "Name": "Season 1", "Type": "Season", "SeriesId": "sr1", "IndexNumber": 1},
+			{"Id": "se0", "Name": "Specials", "Type": "Season", "SeriesId": "sr1", "IndexNumber": 0},
+		}
+	case "Episode":
+		// Anastasia has watched Season 1; sally one of its two episodes.
+		played := map[string][]bool{"": {false, false, false}, "u1": {true, false, false}, "u2": {true, true, false}}[q.Get("userId")]
+		for i, ep := range []map[string]any{
+			{"Id": "e1", "SeriesId": "sr1", "SeasonId": "se1"},
+			{"Id": "e2", "SeriesId": "sr1", "SeasonId": "se1"},
+			{"Id": "e0", "SeriesId": "sr1", "SeasonId": "se0"},
+		} {
+			ep["Type"] = "Episode"
+			if q.Get("userId") != "" {
+				ep["UserData"] = map[string]any{"Played": played[i]}
+			} else {
+				ep["MediaSources"] = []map[string]any{{"Size": 1 << 30}}
+			}
+			items = append(items, ep)
+		}
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"Items":            items,
@@ -95,6 +124,12 @@ func (b *syncBuffer) String() string {
 // output and a stop function that waits for a clean shutdown.
 func startApp(t *testing.T, fake *fakeJellyfin) (string, *syncBuffer, func()) {
 	t.Helper()
+	return startAppWithEnv(t, fake, nil)
+}
+
+// startAppWithEnv is startApp with extra environment variables.
+func startAppWithEnv(t *testing.T, fake *fakeJellyfin, extra map[string]string) (string, *syncBuffer, func()) {
+	t.Helper()
 	jf := httptest.NewServer(fake)
 	t.Cleanup(jf.Close)
 
@@ -102,6 +137,9 @@ func startApp(t *testing.T, fake *fakeJellyfin) (string, *syncBuffer, func()) {
 		"JELLYFIN_URL":     jf.URL,
 		"JELLYFIN_API_KEY": testKey,
 		"LISTEN_ADDR":      "127.0.0.1:0",
+	}
+	for k, v := range extra {
+		env[k] = v
 	}
 	logs := &syncBuffer{}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -204,6 +242,52 @@ func TestAppServesMoviesFromJellyfinWithGETOnly(t *testing.T) {
 	}
 	if !strings.Contains(logs.String(), "library loaded") {
 		t.Errorf("logs missing load message:\n%s", logs)
+	}
+}
+
+func TestAppServesTVShowsWithGETOnly(t *testing.T) {
+	fake := &fakeJellyfin{}
+	base, logs, stop := startApp(t, fake)
+
+	page := waitFor(t, base+"/tv", "Andor")
+	fragment := fetch(t, base+"/tv/series/sr1?seasons=hide")
+	stop()
+	for _, want := range []string{
+		`<h3 class="season-row__name">Season 1</h3>`, `<span class="season-row__episodes">2 episodes</span>`,
+		// Season 1 is 2 GiB; the series adds the hidden Specials.
+		`<span class="size__value">2.0</span>`, `<span class="size__value">3.0</span>`,
+		`<span class="user-tag__name">Anastasia Kowalczyk</span>`,
+		`<span class="user-tag__count" aria-hidden="true">1 / 2</span>`,
+		`src="/posters/sr1/tag-sr1"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("TV page missing %q", want)
+		}
+	}
+	if strings.Contains(page, "Specials") {
+		t.Error("Specials shown without INCLUDE_SPECIALS")
+	}
+	if !strings.Contains(fragment, "Show 1 season") {
+		t.Errorf("fragment:\n%s", fragment)
+	}
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	for _, m := range fake.methods {
+		if !strings.HasPrefix(m, "GET ") {
+			t.Errorf("non-GET request to Jellyfin: %s", m)
+		}
+	}
+	if strings.Contains(page+fragment+logs.String(), testKey) {
+		t.Error("API key appears in a response or the logs")
+	}
+}
+
+func TestAppShowsSpecialsWhenIncluded(t *testing.T) {
+	base, _, stop := startAppWithEnv(t, &fakeJellyfin{}, map[string]string{"INCLUDE_SPECIALS": "true"})
+	page := waitFor(t, base+"/tv", "Andor")
+	stop()
+	if !strings.Contains(page, `<h3 class="season-row__name">Specials</h3>`) {
+		t.Error("Specials hidden with INCLUDE_SPECIALS=true")
 	}
 }
 

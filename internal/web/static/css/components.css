@@ -296,7 +296,10 @@ a {
 }
 
 /* --------------------------------------------------------------- button */
-/* Default: outlined control. --primary: accent fill (password screen only). */
+/* Default: outlined control. --primary: accent fill (password screen only).
+   --disclosure: borderless text after a chevron ("Show 35 seasons" / "Hide
+   seasons"), sized to sit in a line of meta text. __icon: a 16px stroke
+   icon before the label ("Expand all"). */
 
 .button {
   display: inline-flex;
@@ -332,12 +335,45 @@ a {
   background: var(--accent-hover);
 }
 
+.button__icon {
+  width: var(--space-4);
+  height: var(--space-4);
+  flex: none;
+}
+
+.button--disclosure {
+  min-height: 0;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1);
+  border-color: transparent;
+  border-radius: var(--radius-sm);
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.button--disclosure .button__icon {
+  color: var(--text-2);
+}
+
 /* ----------------------------------------------------------- completion */
-/* Who completed an item: a user-group, or the plain "Not completed by
-   anyone". Neither takes the accent or any colour of its own (DESIGN.md §3). */
+/* Who completed an item: a user-group, then (seasons only) each in-progress
+   user's tag on a line of its own; or the plain "Not completed by anyone".
+   None of it takes the accent or any colour of its own (DESIGN.md §3). */
 
 .completion {
   min-width: 0;
+}
+
+.completion > * + * {
+  margin-top: var(--space-2);
+}
+
+.completion__progress {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+  padding: 0;
+  list-style: none;
 }
 
 .completion__none {
@@ -497,6 +533,182 @@ a {
   line-height: 1;
 }
 
+/* ----------------------------------------------------------- season-row */
+/* One season under its series, on the same columns as the list head: the
+   poster column holds the series' rail; then the name and episode count
+   under a hairline; size; completion. The name cell is at least
+   --season-row-min tall and centres on the completion beside it. Narrow
+   screens stack size and completion under the name. */
+
+.season-row {
+  display: grid;
+  grid-template-columns: var(--poster-w) minmax(0, 1fr) calc(2 * var(--space-12)) minmax(0, 1fr);
+  column-gap: var(--space-6);
+  align-items: center;
+  padding: var(--space-1) var(--space-8);
+}
+
+.season-row__main {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: center;
+  align-items: baseline;
+  column-gap: var(--space-3);
+  min-height: var(--season-row-min);
+  border-top: 1px solid var(--line-soft);
+}
+
+.season-row__name {
+  margin: 0;
+  font-size: var(--text-row);
+  font-weight: var(--weight-regular);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.season-row__episodes {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.season-row__facts {
+  display: contents;
+}
+
+.season-row__size {
+  text-align: right;
+}
+
+@media (max-width: 40rem) {
+  .season-row {
+    grid-template-columns: var(--poster-w) minmax(0, 1fr);
+    column-gap: var(--space-4);
+    padding-inline: var(--space-4);
+    padding-bottom: var(--space-3);
+  }
+
+  .season-row__main {
+    min-height: 0;
+    padding-top: var(--space-3);
+  }
+
+  .season-row__facts {
+    grid-column: 2;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-4);
+    margin-top: var(--space-2);
+  }
+
+  .season-row__size {
+    text-align: left;
+  }
+
+  .season-row__completion {
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+/* ----------------------------------------------------------- series-row */
+/* A series: its head on the movie-row grid (poster, title over year, counts
+   and the disclosure, then the series total), and its seasons below, hung
+   on a hairline rail down the middle of the poster column. The whole series
+   is one row of the list, divided from the next by a soft hairline. */
+
+.series-list {
+  padding: 0;
+  list-style: none;
+}
+
+.series-row {
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.series-row__head {
+  display: grid;
+  grid-template-columns: var(--poster-w) minmax(0, 1fr) calc(2 * var(--space-12)) minmax(0, 1fr);
+  column-gap: var(--space-6);
+  align-items: center;
+  min-height: var(--row-min);
+  padding: var(--space-2) var(--space-8);
+}
+
+.series-row__title {
+  font-size: var(--text-row);
+  font-weight: var(--weight-medium);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.series-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--space-4);
+  margin-top: var(--space-1);
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+.series-row__year,
+.series-row__counts {
+  font-family: var(--font-mono);
+}
+
+.series-row__size {
+  text-align: right;
+}
+
+.series-row__seasons {
+  position: relative;
+  padding: 0 0 var(--space-3);
+  list-style: none;
+}
+
+.series-row__seasons::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: var(--space-3);
+  left: calc(var(--space-8) + var(--poster-w) / 2);
+  width: 1px;
+  background: var(--line);
+}
+
+@media (max-width: 40rem) {
+  .series-row__head {
+    grid-template-columns: var(--poster-w) minmax(0, 1fr);
+    column-gap: var(--space-4);
+    padding-block: var(--space-3);
+    padding-inline: var(--space-4);
+  }
+
+  .series-row__head > .poster {
+    grid-row: 1 / span 2;
+    align-self: start;
+  }
+
+  .series-row__main,
+  .series-row__size {
+    grid-column: 2;
+  }
+
+  .series-row__size {
+    margin-top: var(--space-2);
+    text-align: left;
+  }
+
+  .series-row__seasons::before {
+    left: calc(var(--space-4) + var(--poster-w) / 2);
+  }
+}
+
 /* ----------------------------------------------------------------- size */
 /* Mono value, one decimal, with a small dim unit. Every size has the same
    weight and colour however large (DESIGN.md §3). --unknown: "Unknown" in
@@ -622,6 +834,41 @@ a {
 .user-tag__name {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* --progress: "x / y" in mono and a thin bar showing the same fraction. The
+   bar is plain text colour on a hairline track: progress, not a score. */
+.user-tag__count {
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.user-tag__bar {
+  display: block;
+  flex: none;
+  width: var(--space-7);
+  height: calc(var(--space-1) / 2);
+  overflow: hidden;
+  border-radius: var(--radius-xs);
+  background: var(--line-strong);
+}
+
+.user-tag__fill {
+  display: block;
+  height: 100%;
+  background: var(--text-2);
+}
+
+/* What screen readers hear instead of "x / y": hidden from view only. */
+.user-tag__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .user-code {

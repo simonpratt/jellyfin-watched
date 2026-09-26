@@ -1,4 +1,8 @@
 {{/* completion: who has completed an item. Takes a Completion. Completed
-     users as a user-group, otherwise the plain statement "Not completed by
-     anyone", styled as calmly as any list of names (DESIGN.md §3). */}}
-{{define "completion"}}<div class="completion">{{if .Completed.Tags}}{{template "user-group" .Completed}}{{else}}<p class="completion__none">Not completed by anyone</p>{{end}}</div>{{end}}
+     users as a user-group, then each in-progress user on a line of their
+     own; with neither, the plain statement "Not completed by anyone", styled
+     as calmly as any list of names (DESIGN.md §3). */}}
+{{define "completion"}}<div class="completion">
+{{- if .Completed.Tags}}{{template "user-group" .Completed}}{{end}}
+{{- if .InProgress}}<ul class="completion__progress">{{range .InProgress}}<li>{{template "user-tag" .}}</li>{{end}}</ul>{{end}}
+{{- if not (or .Completed.Tags .InProgress)}}<p class="completion__none">Not completed by anyone</p>{{end}}</div>{{end}}

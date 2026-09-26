@@ -82,7 +82,8 @@ func TestMoviesPageListsTitlesAndYears(t *testing.T) {
 			t.Errorf("page missing %q", want)
 		}
 	}
-	if strings.Contains(body, ">0<") {
+	// The header's tab counts are numbers too; only the list matters here.
+	if strings.Contains(body[strings.Index(body, "<main"):], ">0<") {
 		t.Error("unknown year rendered as 0")
 	}
 	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
@@ -169,14 +170,14 @@ func TestMovieRowShowsYearAndAddedDate(t *testing.T) {
 
 func TestHeaderHasMarkNameTabsAndRefreshSlot(t *testing.T) {
 	movies := make([]library.Movie, 1284)
-	h := newTestHandler(t, stubSnapshots{ok: true, snap: library.Snapshot{Movies: movies}})
+	h := newTestHandler(t, stubSnapshots{ok: true, snap: library.Snapshot{Movies: movies, Series: make([]library.Series, 212)}})
 	body := get(t, h, "/movies").Body.String()
 	for _, want := range []string{
 		`class="app-header__mark"`,
 		`>Spool<`,
 		`<nav class="app-header__tabs" aria-label="Library">`,
 		`<a class="app-header__tab" href="/movies" aria-current="page">Movies <span class="app-header__count">1,284</span></a>`,
-		`<a class="app-header__tab" href="/tv">TV shows</a>`,
+		`<a class="app-header__tab" href="/tv">TV shows <span class="app-header__count">212</span></a>`,
 		`class="app-header__actions"`,
 		`<h1 class="page-head__title">Movies</h1>`,
 		`<p class="page-head__summary">1,284 movies</p>`,
@@ -194,7 +195,7 @@ func TestMovieCountHiddenBeforeFirstLoad(t *testing.T) {
 	}
 }
 
-func TestTVShowsPagePlaceholder(t *testing.T) {
+func TestTVShowsPageShell(t *testing.T) {
 	rec := get(t, newTestHandler(t, stubSnapshots{ok: true}), "/tv")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d", rec.Code)
@@ -202,7 +203,7 @@ func TestTVShowsPagePlaceholder(t *testing.T) {
 	body := rec.Body.String()
 	for _, want := range []string{
 		`<title>TV shows · Spool</title>`,
-		`<a class="app-header__tab" href="/tv" aria-current="page">TV shows</a>`,
+		`<a class="app-header__tab" href="/tv" aria-current="page">TV shows <span class="app-header__count">0</span></a>`,
 		`<h1 class="page-head__title">TV shows</h1>`,
 	} {
 		if !strings.Contains(body, want) {
@@ -298,7 +299,7 @@ func TestMovieRowsShowSizeAndWhoCompleted(t *testing.T) {
 	if n := strings.Count(body, "Not completed by anyone"); n != 1 {
 		t.Errorf(`"Not completed by anyone" appears %d times, want 1`, n)
 	}
-	if strings.Contains(body, ">0<") || strings.Contains(body, ">0 B<") {
+	if list := body[strings.Index(body, "<main"):]; strings.Contains(list, ">0<") || strings.Contains(list, ">0 B<") {
 		t.Error("an unknown size rendered as a number")
 	}
 	// The same user has the same tag everywhere.

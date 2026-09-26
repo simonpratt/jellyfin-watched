@@ -12,7 +12,7 @@ import (
 	"jellyfin-watched/internal/jellyfin"
 )
 
-// fakeServer answers the three requests a movie refresh makes with JSON
+// fakeServer answers the requests a movie refresh makes (and TV ones, empty) with JSON
 // shaped like Jellyfin 12.1.0's: /Users is a bare array, /Items a page.
 func fakeServer(t *testing.T, users string, movies string, played map[string]string) *jellyfin.Client {
 	t.Helper()
@@ -25,6 +25,9 @@ func fakeServer(t *testing.T, users string, movies string, played map[string]str
 		switch {
 		case r.URL.Path == "/Users":
 			_, _ = w.Write([]byte(users))
+		case r.URL.Path == "/Items" && q.Get("includeItemTypes") != "Movie":
+			// No TV in these tests.
+			_, _ = w.Write([]byte(`{"Items":[],"TotalRecordCount":0,"StartIndex":0}`))
 		case r.URL.Path == "/Items" && q.Get("userId") == "":
 			_, _ = w.Write([]byte(movies))
 		case r.URL.Path == "/Items" && q.Get("isPlayed") == "true":
@@ -80,7 +83,7 @@ func TestRefreshFromJellyfinSizesAndCompletion(t *testing.T) {
 		"u-ak":    played("m-two"),
 		"u-h":     played("m-partial", "m-two", "not-a-movie-we-know"),
 	})
-	cache := NewCache(c)
+	cache := NewCache(c, Options{})
 	if err := cache.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +124,7 @@ func TestRefreshFromJellyfinSizesAndCompletion(t *testing.T) {
 }
 
 func TestRefreshWithNoUsers(t *testing.T) {
-	cache := NewCache(fakeServer(t, `[]`, fourMovies, nil))
+	cache := NewCache(fakeServer(t, `[]`, fourMovies, nil), Options{})
 	if err := cache.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +140,7 @@ func TestRefreshWithNoUsers(t *testing.T) {
 }
 
 func TestRefreshKeepsPosterTags(t *testing.T) {
-	cache := NewCache(fakeServer(t, `[]`, fourMovies, nil))
+	cache := NewCache(fakeServer(t, `[]`, fourMovies, nil), Options{})
 	if err := cache.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}

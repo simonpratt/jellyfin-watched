@@ -1,0 +1,19 @@
+{{/* series-row: one series in the TV shows list. Takes a SeriesRow. Poster,
+     title over year, season and episode counts and the disclosure, then the
+     series total; its seasons, when shown, hang below on a rail. The
+     disclosure swaps in this same component from /tv/series/{id}. */}}
+{{define "series-row"}}<li class="series-row" id="{{.ID}}">
+<div class="series-row__head">
+{{template "poster" .Poster}}
+<div class="series-row__main">
+<h2 class="series-row__title">{{.Title}}</h2>
+<div class="series-row__meta">{{if .Year}}<span class="series-row__year">{{.Year}}</span>{{end}}<span class="series-row__counts">{{.Counts}}</span>{{if .Toggle}}{{template "button" .Toggle}}{{end}}</div>
+</div>
+<div class="series-row__size">{{template "size" .Size}}</div>
+</div>
+{{- if .Seasons}}
+<ul class="series-row__seasons" id="{{.SeasonsID}}">
+{{range .Seasons}}{{template "season-row" .}}{{end}}</ul>
+{{- end}}
+</li>
+{{end}}
