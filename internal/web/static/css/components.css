@@ -240,7 +240,8 @@ a {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-3);
+  justify-content: flex-end;
+  gap: var(--space-3) var(--space-5);
 }
 
 .page-head__tools:empty {
@@ -426,6 +427,10 @@ a {
   line-height: 1.6;
 }
 
+.empty-state__action {
+  margin-top: var(--space-5);
+}
+
 .empty-state--loading {
   display: flex;
   flex-direction: column;
@@ -453,6 +458,27 @@ a {
 
   .empty-state--loading {
     padding-block: var(--space-12);
+  }
+}
+
+/* -------------------------------------------------------- list-controls */
+/* The search box, then the sort control, as one form on the page head's
+   right. On a narrow screen the search box takes the full width and the
+   sort control wraps beneath it. */
+
+.list-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3) var(--space-5);
+}
+
+@media (max-width: 40rem) {
+  .page-head__tools,
+  .list-controls {
+    justify-content: flex-start;
+    width: 100%;
   }
 }
 
@@ -703,6 +729,89 @@ a {
   }
 }
 
+/* --------------------------------------------------------------- search */
+/* A sunken input with a magnifier before the text and, once there is text,
+   a × that clears it. The width is six --space-12: the design has no token
+   for it, and it fits the Movies and TV shows mockups (254–300px). */
+
+.search {
+  position: relative;
+  width: calc(6 * var(--space-12));
+  max-width: 100%;
+}
+
+.search__icon {
+  position: absolute;
+  top: 50%;
+  left: var(--space-4);
+  width: var(--space-4);
+  height: var(--space-4);
+  color: var(--text-3);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+/* Text starts after the icon: its inset, its width and --space-2. */
+.search__input {
+  width: 100%;
+  min-height: var(--control-h);
+  margin: 0;
+  padding: 0 var(--space-10) 0 calc(2 * var(--space-4) + var(--space-2));
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-md);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.search__input::placeholder {
+  color: var(--text-3);
+  opacity: 1;
+}
+
+.search__input::-webkit-search-cancel-button,
+.search__input::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.search__clear {
+  position: absolute;
+  top: 50%;
+  right: var(--space-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-8);
+  height: var(--space-8);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.search__clear:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* Nothing to clear. */
+.search__input:placeholder-shown ~ .search__clear {
+  display: none;
+}
+
+@media (max-width: 40rem) {
+  .search {
+    width: 100%;
+  }
+}
+
 /* ----------------------------------------------------------- season-row */
 /* One season under its series, on the same columns as the list head: the
    poster column holds the series' rail; then the name and episode count
@@ -907,6 +1016,61 @@ a {
 .size--unknown {
   color: var(--text-3);
   font-family: var(--font-sans);
+}
+
+/* --------------------------------------------------------- sort-control */
+/* "Sort by", a segmented group of keys, then the direction button (a
+   default button). Every segment looks the same; the selected one is shown
+   by fill, weight and a 2px accent underline, not colour alone (Components
+   sheet). The accent is allowed here: the selected sort is interaction. */
+
+.sort-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.sort-control__label {
+  margin-right: calc(-1 * var(--space-1));
+  color: var(--text-3);
+  font-size: var(--text-md);
+}
+
+.sort-control__segments {
+  display: inline-flex;
+  gap: var(--space-1);
+  min-height: var(--control-h);
+  padding: var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.sort-control__segment {
+  padding: 0 var(--space-3);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-top: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--text-md);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--duration) ease;
+}
+
+.sort-control__segment:hover {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+.sort-control__segment[aria-pressed="true"] {
+  border-bottom-color: var(--accent);
+  background: var(--bg-hover);
+  color: var(--text);
+  font-weight: var(--weight-medium);
 }
 
 /* ----------------------------------------------------------- user-group */

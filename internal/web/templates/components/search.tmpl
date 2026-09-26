@@ -1,0 +1,13 @@
+{{/* search: "Search titles", with a magnifier before the text and, once
+     there is text, a × that clears it. Takes a Search. It sits in the
+     list-controls form, which does the searching. */}}
+{{define "search"}}<div class="search">
+<svg class="search__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true" focusable="false"><circle cx="7" cy="7" r="4.25"/><path d="m10.25 10.25 3 3"/></svg>
+<input type="search" id="{{.ID}}" class="search__input" name="q" value="{{.Value}}" placeholder="Search titles" aria-label="Search titles" autocomplete="off" spellcheck="false">
+<button type="submit" class="search__clear" name="clear" value="1" aria-label="Clear search" {{template "clear-search-js"}}>{{template "button-icon" "close"}}</button>
+</div>{{end}}
+
+{{/* clear-search-js: empties the list-controls search box, focuses it and
+     submits the form, instead of the button's own submit (which is what
+     happens with no JavaScript). */}}
+{{define "clear-search-js"}}hx-on:click="event.preventDefault(); const f = document.getElementById('list-controls'); f.elements.q.value = ''; f.elements.q.focus(); f.requestSubmit()"{{end}}

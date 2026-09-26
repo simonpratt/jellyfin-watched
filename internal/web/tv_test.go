@@ -58,7 +58,7 @@ func TestTVPageListsSeriesAndSeasons(t *testing.T) {
 	for _, want := range []string{
 		`<a class="app-header__tab" href="/tv" aria-current="page">TV shows <span class="app-header__count">5</span></a>`,
 		// 2 + 1 + 35 + 2 seasons; 89 + 2 + 350 + 38 GiB.
-		`<p class="page-head__summary">5 series · 40 seasons · 479.0 GB on disk</p>`,
+		`<p id="page-summary" class="page-head__summary">5 series · 40 seasons · 479.0 GB on disk</p>`,
 		`<span class="list-head__completion">Completed by · In progress</span>`,
 		`<h2 class="series-row__title">Andor</h2>`,
 		`<span class="series-row__year">2022</span>`,

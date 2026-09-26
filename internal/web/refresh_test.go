@@ -247,14 +247,14 @@ func TestEmptyLibraryStates(t *testing.T) {
 		`<h2 class="empty-state__headline">There are no movies on this server</h2>`,
 		`<p class="empty-state__line">Jellyfin reported no movies at the last refresh, 12 minutes ago.</p>`,
 		`<p class="empty-state__line">Movies added in Jellyfin appear here after the next refresh.</p>`,
-		`<p class="page-head__summary">0 movies</p>`,
+		`<p id="page-summary" class="page-head__summary">0 movies</p>`,
 	)
 	tv := do(t, h, "GET", "/tv", nil).Body.String()
 	assertContains(t, tv,
 		`<h2 class="empty-state__headline">There are no TV shows on this server</h2>`,
 		`<p class="empty-state__line">Jellyfin reported no series at the last refresh, 12 minutes ago.</p>`,
 		`<p class="empty-state__line">Shows added in Jellyfin appear here after the next refresh.</p>`,
-		`<p class="page-head__summary">0 series</p>`,
+		`<p id="page-summary" class="page-head__summary">0 series</p>`,
 	)
 	assertNotContains(t, movies+tv, "list-head", "empty-state--loading")
 }

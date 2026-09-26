@@ -11,7 +11,9 @@ import (
 	"html/template"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -104,23 +106,68 @@ func parsePages() (map[string]*template.Template, error) {
 	return pages, nil
 }
 
+// movies serves the Movies page; see listView.
 func (h *handler) movies(w http.ResponseWriter, r *http.Request) {
-	h.render(w, "movies", "layout", newMoviesPage(h.lib.Status(), h.now()))
+	v, ok := h.listView(w, r, "")
+	if !ok {
+		return
+	}
+	h.render(w, "movies", listBlock(w, r), newMoviesPage(h.lib.Status(), h.now(), v))
 }
 
-// tv serves the TV shows page. ?seasons=all or none expands or collapses
-// every series ("Expand all"). An htmx request gets the page's content
-// alone, which "Expand all" swaps into <main>; a normal load, htmx
-// restoring a page missing from its history cache, or the page reloading
-// itself after a refresh (targeting #app) gets the whole page.
+// tv serves the TV shows page; see listView. ?seasons=all or none expands
+// or collapses every series ("Expand all"), which swaps the page's content
+// into <main>.
 func (h *handler) tv(w http.ResponseWriter, r *http.Request) {
-	block := "layout"
+	seasons := r.URL.Query().Get("seasons")
+	if seasons != "all" && seasons != "none" {
+		seasons = ""
+	}
+	v, ok := h.listView(w, r, seasons)
+	if !ok {
+		return
+	}
+	h.render(w, "tv", listBlock(w, r), newTVPage(h.lib.Status(), h.now(), v, seasons))
+}
+
+// listView reads a list page's search and sort from its URL (see
+// parseView), which is where they live so that a reload, a shared link or
+// the page reloading itself after a refresh shows the same view.
+//
+// A browser submitting the list-controls form without JavaScript sends
+// every field (?q=&sort=title&dir=asc&set-sort=year); it is redirected to
+// the tidy URL for the view (?sort=year), and listView reports false. So is
+// any other URL with parameters beyond the view's own; the order they come
+// in doesn't matter. An
+// htmx request from the form is answered in place, and the response puts
+// the tidy URL in the address bar instead.
+func (h *handler) listView(w http.ResponseWriter, r *http.Request, seasons string) (library.View, bool) {
+	query := r.URL.Query()
+	v := parseView(query)
+	if r.Header.Get("HX-Request") != "true" {
+		if !maps.EqualFunc(query, viewQuery(v, seasons), slices.Equal) {
+			http.Redirect(w, r, viewURL(r.URL.Path, v, seasons), http.StatusSeeOther)
+			return v, false
+		}
+		return v, true
+	}
+	if r.Header.Get("HX-Trigger") == listControlsID {
+		w.Header().Set("HX-Replace-Url", viewURL(r.URL.Path, v, seasons))
+	}
+	return v, true
+}
+
+// listBlock is the block a list page renders: an htmx request (the search
+// and sort form, or "Expand all") gets the page's content alone; a normal
+// load, htmx restoring a page missing from its history cache, or the page
+// reloading itself after a refresh (targeting #app) gets the whole page.
+func listBlock(w http.ResponseWriter, r *http.Request) string {
+	w.Header().Add("Vary", "HX-Request, HX-Target")
 	if r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true" &&
 		r.Header.Get("HX-Target") != "app" {
-		block = "content"
+		return "content"
 	}
-	w.Header().Add("Vary", "HX-Request, HX-Target")
-	h.render(w, "tv", block, newTVPage(h.lib.Status(), h.now(), parseExpansion(r.URL.Query().Get("seasons"))))
+	return "layout"
 }
 
 // refreshNow is "Refresh now": it starts a background refresh, unless one

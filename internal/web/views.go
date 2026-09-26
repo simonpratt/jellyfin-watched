@@ -3,6 +3,7 @@ package web
 import (
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"jellyfin-watched/internal/library"
@@ -129,6 +130,7 @@ type EmptyState struct {
 	Loading  bool
 	Headline string
 	Lines    []string
+	Action   *Button // e.g. "Clear search"; nil for none
 }
 
 // firstLoad is the empty state before the library has loaded, unless the
@@ -157,24 +159,176 @@ func emptyLibrary(st library.Status, now time.Time, what, jellyfinName, added st
 	}
 }
 
+// noMatches is the empty state for a search that matched nothing, e.g.
+// "No movies match “xyz”", with a button that clears the search.
+func noMatches(what, search string) *EmptyState {
+	return &EmptyState{
+		Headline: "No " + what + " match “" + search + "”",
+		Lines:    []string{"Search looks at titles only."},
+		Action:   clearSearchButton(),
+	}
+}
+
+// listControlsID is the ID of the search and sort form; "Clear search"
+// buttons outside it submit it through their form attribute.
+const listControlsID = "list-controls"
+
+// clearSearchButton is "Clear search": a submit button of the list-controls
+// form that clears the search. With htmx it empties the search box, moves
+// focus there and submits the form; with no JavaScript it submits
+// clear=1.
+func clearSearchButton() *Button {
+	return &Button{Label: "Clear search", Type: "submit", Form: listControlsID, Name: "clear", Value: "1", ClearsSearch: true}
+}
+
+// matchSummary is the page summary during a search: "3 of 1,284 movies
+// match".
+func matchSummary(matched, total int, singular, plural string) string {
+	return formatNumber(matched) + " of " + formatCount(total, singular, plural) + " match"
+}
+
+// ListControls is the view model for the list-controls component: the
+// search box and sort control above a list, as one GET form. With no
+// JavaScript it submits normally; with htmx, typing (debounced) or a sort
+// button fetches the page and swaps in the results and the parts of the page
+// head that change (SelectOOB), leaving the search box as it is.
+type ListControls struct {
+	ID        string // listControlsID
+	Action    string // the page's path, "/movies" or "/tv"
+	SelectOOB string // IDs swapped in alongside the results
+	Seasons   string // the TV page's ?seasons=, kept across searches
+	Search    Search
+	Sort      SortControl
+}
+
+// Search is the view model for the search component: the box and, once
+// it has text, a × that clears it.
+type Search struct {
+	ID    string // the input's ID, which the form's trigger listens to
+	Value string
+}
+
+// SortControl is the view model for the sort-control component: "Sort by"
+// and a segment per key, then the direction button. Sort and Dir are the
+// current view, carried as hidden fields; the segments and the direction
+// button submit set-sort and set-dir, which replace them.
+type SortControl struct {
+	Sort, Dir string
+	Options   []SortOption
+	Direction Button
+}
+
+// SortOption is one segment of the sort control. Every key looks the same
+// apart from which is selected (DESIGN.md §3).
+type SortOption struct {
+	ID       string // "sort-size", stable across swaps so focus stays put
+	Label    string
+	Value    string
+	Selected bool
+}
+
+var sortLabels = map[library.SortKey]string{
+	library.SortTitle: "Title",
+	library.SortYear:  "Year",
+	library.SortAdded: "Date added",
+	library.SortSize:  "Size",
+}
+
+// parseView reads a list's view from its query: q, sort and dir, then the
+// form's buttons, set-sort, set-dir and clear, which override them.
+func parseView(q url.Values) library.View {
+	v := library.View{
+		Search: strings.TrimSpace(q.Get("q")),
+		Sort:   library.ParseSortKey(q.Get("sort")),
+		Desc:   q.Get("dir") == "desc",
+	}
+	if s := q.Get("set-sort"); s != "" {
+		v.Sort = library.ParseSortKey(s)
+	}
+	if d := q.Get("set-dir"); d != "" {
+		v.Desc = d == "desc"
+	}
+	if q.Get("clear") != "" {
+		v.Search = ""
+	}
+	return v
+}
+
+// viewQuery is the tidy query for a view: only what differs from the
+// default (title, ascending, no search), plus the TV page's seasons.
+func viewQuery(v library.View, seasons string) url.Values {
+	q := url.Values{}
+	if v.Search != "" {
+		q.Set("q", v.Search)
+	}
+	if v.Sort != library.SortTitle && v.Sort != "" {
+		q.Set("sort", string(v.Sort))
+	}
+	if v.Desc {
+		q.Set("dir", "desc")
+	}
+	if seasons != "" {
+		q.Set("seasons", seasons)
+	}
+	return q
+}
+
+// viewURL is path with the view's tidy query.
+func viewURL(path string, v library.View, seasons string) string {
+	if q := viewQuery(v, seasons).Encode(); q != "" {
+		return path + "?" + q
+	}
+	return path
+}
+
+func newListControls(action string, v library.View, seasons string, selectOOB ...string) *ListControls {
+	c := &ListControls{
+		ID:        listControlsID,
+		Action:    action,
+		SelectOOB: "#page-summary,#sort-control",
+		Seasons:   seasons,
+		Search:    Search{ID: "search-q", Value: v.Search},
+		Sort:      SortControl{Sort: string(v.Sort), Dir: "asc"},
+	}
+	for _, id := range selectOOB {
+		c.SelectOOB += ",#" + id
+	}
+	if c.Sort.Sort == "" {
+		c.Sort.Sort = string(library.SortTitle)
+	}
+	for _, k := range library.SortKeys {
+		c.Sort.Options = append(c.Sort.Options, SortOption{ID: "sort-" + string(k), Label: sortLabels[k],
+			Value: string(k), Selected: string(k) == c.Sort.Sort})
+	}
+	// The button shows the current direction and switches to the other.
+	c.Sort.Direction = Button{Label: "Ascending", Icon: "arrow-up", ID: "sort-dir", Type: "submit", Name: "set-dir", Value: "desc"}
+	if v.Desc {
+		c.Sort.Dir = "desc"
+		c.Sort.Direction.Label, c.Sort.Direction.Icon, c.Sort.Direction.Value = "Descending", "arrow-down", "asc"
+	}
+	return c
+}
+
 // MoviesPage is the view model for pages/movies.tmpl.
 type MoviesPage struct {
 	Page
-	Loaded  bool
-	Summary string      // e.g. "1,284 movies"
-	Notice  *Notice     // a failed refresh; nil normally
-	Empty   *EmptyState // first load or no movies; nil when there's a list
-	Movies  []MovieRow
+	Loaded   bool
+	Summary  string        // e.g. "1,284 movies", or "3 of 1,284 movies match"
+	Controls *ListControls // search and sort; nil with no movies
+	Notice   *Notice       // a failed refresh; nil normally
+	Empty    *EmptyState   // first load, no movies or no matches; nil when there's a list
+	Movies   []MovieRow
 }
 
 // TVPage is the view model for pages/tv.tmpl.
 type TVPage struct {
 	Page
 	Loaded    bool
-	Summary   string      // e.g. "212 series · 1,406 seasons · 9.7 TB on disk"
-	Notice    *Notice     // a failed refresh; nil normally
-	Empty     *EmptyState // first load or no series; nil when there's a list
-	ExpandAll *Button     // "Expand all" / "Collapse all"; nil with no series
+	Summary   string        // e.g. "212 series · 1,406 seasons · 9.7 TB on disk"
+	Controls  *ListControls // search and sort; nil with no series
+	Notice    *Notice       // a failed refresh; nil normally
+	Empty     *EmptyState   // first load, no series or no matches; nil when there's a list
+	ExpandAll *Button       // "Expand all" / "Collapse all"; nil with no series
 	Series    []SeriesRow
 }
 
@@ -224,6 +378,13 @@ type Button struct {
 	// goes and how. PushURL puts the GET's URL in the address bar.
 	Get, Post, Target, Swap string
 	PushURL                 bool
+	// Type is "submit" for a form's button; "" is type="button". Name and
+	// Value are what it submits, and Form the ID of a form it submits from
+	// outside it.
+	Type, Name, Value, Form string
+	// ClearsSearch makes the button clear the list-controls search box,
+	// focus it and submit the form (with JavaScript).
+	ClearsSearch bool
 }
 
 // Size is the view model for the size component: "14.6 GB", or "Unknown".
@@ -347,20 +508,29 @@ func newMovieRow(m library.Movie, tags map[string]UserTag, totalUsers int) Movie
 	}
 }
 
-func newMoviesPage(st library.Status, now time.Time) MoviesPage {
+func newMoviesPage(st library.Status, now time.Time, v library.View) MoviesPage {
 	p := MoviesPage{Page: newPage("Movies", "movies", st, now), Loaded: st.Loaded,
 		Notice: newNotice(st, now), Empty: firstLoad(st)}
 	if !st.Loaded {
 		return p
 	}
 	snap := st.Snapshot
+	p.Summary = formatCount(len(snap.Movies), "movie", "movies")
 	if len(snap.Movies) == 0 {
 		p.Empty = emptyLibrary(st, now, "movies", "movies", "Movies")
+		return p
 	}
-	p.Summary = formatCount(len(snap.Movies), "movie", "movies")
+	p.Controls = newListControls("/movies", v, "")
+	movies := library.ArrangeMovies(snap.Movies, v)
+	if v.Search != "" {
+		p.Summary = matchSummary(len(movies), len(snap.Movies), "movie", "movies")
+		if len(movies) == 0 {
+			p.Empty = noMatches("movies", v.Search)
+		}
+	}
 	tags := newUserTags(snap.Users)
-	p.Movies = make([]MovieRow, 0, len(snap.Movies))
-	for _, m := range snap.Movies {
+	p.Movies = make([]MovieRow, 0, len(movies))
+	for _, m := range movies {
 		p.Movies = append(p.Movies, newMovieRow(m, tags, len(snap.Users)))
 	}
 	return p
@@ -472,7 +642,10 @@ func newSeriesRow(sr library.Series, tags map[string]UserTag, totalUsers int, ex
 	return row
 }
 
-func newTVPage(st library.Status, now time.Time, exp expansion) TVPage {
+// newTVPage builds the TV shows page. seasons is the page's ?seasons=
+// ("all", "none" or ""), from which exp comes.
+func newTVPage(st library.Status, now time.Time, v library.View, seasons string) TVPage {
+	exp := parseExpansion(seasons)
 	p := TVPage{Page: newPage("TV shows", "tv", st, now), Loaded: st.Loaded,
 		Notice: newNotice(st, now), Empty: firstLoad(st)}
 	if !st.Loaded {
@@ -484,26 +657,37 @@ func newTVPage(st library.Status, now time.Time, exp expansion) TVPage {
 		p.Summary = formatCount(0, "series", "series")
 		return p
 	}
-	tags := newUserTags(snap.Users)
-	seasons := 0
+	nSeasons := 0
 	var bytes int64
-	p.Series = make([]SeriesRow, 0, len(snap.Series))
 	for _, sr := range snap.Series {
-		seasons += len(sr.Seasons)
+		nSeasons += len(sr.Seasons)
 		bytes += sr.Size
-		p.Series = append(p.Series, newSeriesRow(sr, tags, len(snap.Users), exp))
 	}
-	p.Summary = formatCount(len(snap.Series), "series", "series") + " · " + formatCount(seasons, "season", "seasons")
+	p.Summary = formatCount(len(snap.Series), "series", "series") + " · " + formatCount(nSeasons, "season", "seasons")
 	if bytes > 0 {
-		v, u := formatSize(bytes)
-		p.Summary += " · " + v + " " + u + " on disk"
+		value, unit := formatSize(bytes)
+		p.Summary += " · " + value + " " + unit + " on disk"
 	}
-	if len(p.Series) > 0 {
-		p.ExpandAll = &Button{Label: "Expand all", Icon: "expand-all", ID: "tv-expand-all",
-			Get: "/tv?seasons=all", Target: "main", Swap: "innerHTML", PushURL: true}
-		if exp == expandAll {
-			p.ExpandAll.Label, p.ExpandAll.Icon, p.ExpandAll.Get = "Collapse all", "collapse-all", "/tv?seasons=none"
+	p.Controls = newListControls("/tv", v, seasons, "tv-expand-all")
+	// "Expand all" keeps the search and sort; it is there even when the
+	// search matches nothing, so the swapped-in page head keeps its place.
+	p.ExpandAll = &Button{Label: "Expand all", Icon: "expand-all", ID: "tv-expand-all",
+		Get: viewURL("/tv", v, "all"), Target: "main", Swap: "innerHTML", PushURL: true}
+	if exp == expandAll {
+		p.ExpandAll.Label, p.ExpandAll.Icon, p.ExpandAll.Get = "Collapse all", "collapse-all", viewURL("/tv", v, "none")
+	}
+
+	series := library.ArrangeSeries(snap.Series, v)
+	if v.Search != "" {
+		p.Summary = matchSummary(len(series), len(snap.Series), "series", "series")
+		if len(series) == 0 {
+			p.Empty = noMatches("TV shows", v.Search)
 		}
+	}
+	tags := newUserTags(snap.Users)
+	p.Series = make([]SeriesRow, 0, len(series))
+	for _, sr := range series {
+		p.Series = append(p.Series, newSeriesRow(sr, tags, len(snap.Users), exp))
 	}
 	return p
 }

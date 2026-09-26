@@ -2,12 +2,15 @@
      accent (password screen only); Disclosure is borderless text after a
      chevron that points right when collapsed and down when expanded
      ("Show 35 seasons" / "Hide seasons"). Icon draws "expand-all" or
-     "collapse-all", "refresh" or "spinner" before the label. Busy is an
+     "collapse-all", "arrow-up" or "arrow-down" (sort direction), "refresh"
+     or "spinner" before the label. Busy is an
      action under way ("Refreshing…"): aria-disabled rather than disabled,
      so it keeps focus. The htmx fields fetch a fragment or post an action;
      the ID stays the same in the response, so htmx keeps focus on the
-     button. */}}
-{{define "button"}}<button type="button"{{if .ID}} id="{{.ID}}"{{end}} class="button{{if .Primary}} button--primary{{end}}{{if .Disclosure}} button--disclosure{{end}}{{if .Busy}} button--busy{{end}}"
+     button. Type "submit" makes it a form's button, with Name, Value and
+     Form; ClearsSearch clears the list-controls search. */}}
+{{define "button"}}<button type="{{or .Type "button"}}"{{if .ID}} id="{{.ID}}"{{end}} class="button{{if .Primary}} button--primary{{end}}{{if .Disclosure}} button--disclosure{{end}}{{if .Busy}} button--busy{{end}}"
+{{- if .Form}} form="{{.Form}}"{{end}}{{if .Name}} name="{{.Name}}" value="{{.Value}}"{{end}}{{if .ClearsSearch}} {{template "clear-search-js"}}{{end}}
 {{- if .Busy}} aria-disabled="true"{{end}}
 {{- if .Expanded}} aria-expanded="{{.Expanded}}"{{end}}{{if .Controls}} aria-controls="{{.Controls}}"{{end}}
 {{- if .Get}} hx-get="{{.Get}}"{{end}}{{if .Post}} hx-post="{{.Post}}"{{end}}{{if .Target}} hx-target="{{.Target}}"{{end}}{{if .Swap}} hx-swap="{{.Swap}}"{{end}}{{if .PushURL}} hx-push-url="true"{{end}}>
@@ -21,6 +24,9 @@
 {{- else if eq . "chevron-down"}}<path d="M4.5 6.25 8 9.75l3.5-3.5"/>
 {{- else if eq . "expand-all"}}<path d="M5 3.5 8 6.5l3-3M5 9.5l3 3 3-3"/>
 {{- else if eq . "collapse-all"}}<path d="M5 6.5 8 3.5l3 3M5 12.5l3-3 3 3"/>
+{{- else if eq . "arrow-up"}}<path d="M8 13V3M4.5 6.5 8 3l3.5 3.5"/>
+{{- else if eq . "arrow-down"}}<path d="M8 3v10M4.5 9.5 8 13l3.5-3.5"/>
+{{- else if eq . "close"}}<path d="m4.5 4.5 7 7m0-7-7 7"/>
 {{- else if eq . "refresh"}}<path d="M13 8a5 5 0 1 1-1.5-3.55"/><path d="M11.75 1.75v2.9h-2.9"/>
 {{- else if eq . "spinner"}}<path d="M8 3a5 5 0 1 1-5 5"/>
 {{- end}}</svg>{{end}}

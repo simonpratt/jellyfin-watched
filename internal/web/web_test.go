@@ -190,7 +190,7 @@ func TestHeaderHasMarkNameTabsAndRefreshSlot(t *testing.T) {
 		`<a class="app-header__tab" href="/tv">TV shows <span class="app-header__count">212</span></a>`,
 		`class="app-header__actions"`,
 		`<h1 class="page-head__title">Movies</h1>`,
-		`<p class="page-head__summary">1,284 movies</p>`,
+		`<p id="page-summary" class="page-head__summary">1,284 movies</p>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page missing %s", want)

@@ -2,12 +2,14 @@
 {{if .Loaded}}<div class="page-head">
 <div class="page-head__text">
 <h1 class="page-head__title">Movies</h1>
-{{if .Summary}}<p class="page-head__summary">{{.Summary}}</p>{{end}}
+{{if .Summary}}<p id="page-summary" class="page-head__summary">{{.Summary}}</p>{{end}}
 </div>
-<div class="page-head__tools"></div>
+<div class="page-head__tools">{{if .Controls}}{{template "list-controls" .Controls}}{{end}}</div>
 </div>
 {{end}}
 {{if .Notice}}{{template "notice" .Notice}}{{end}}
+{{/* #results is what the search and sort form swaps. */}}
+<div id="results" class="results">
 {{if .Empty}}{{template "empty-state" .Empty}}
 {{else if .Movies}}
 <div class="list-head" aria-hidden="true"><span class="list-head__title">Title</span><span class="list-head__size">Size</span><span class="list-head__completion">Completed by</span></div>
@@ -15,4 +17,5 @@
 {{range .Movies}}{{template "movie-row" .}}{{end}}
 </ul>
 {{end}}
+</div>
 {{end}}

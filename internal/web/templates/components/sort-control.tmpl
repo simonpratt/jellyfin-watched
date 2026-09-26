@@ -1,0 +1,15 @@
+{{/* sort-control: "Sort by", a segment per key (Title / Year / Date added /
+     Size), then the direction button, which shows the current direction
+     and switches to the other. Takes a SortControl. It sits in the
+     list-controls form: the hidden fields carry the current view, and each
+     button submits the change. Every segment looks the same; the selected
+     one is marked by fill, weight and an underline (aria-pressed). */}}
+{{define "sort-control"}}<div id="sort-control" class="sort-control">
+<input type="hidden" name="sort" value="{{.Sort}}">
+<input type="hidden" name="dir" value="{{.Dir}}">
+<span id="sort-control-label" class="sort-control__label">Sort by</span>
+<div class="sort-control__segments" role="group" aria-labelledby="sort-control-label">
+{{- range .Options}}<button type="submit" id="{{.ID}}" class="sort-control__segment" name="set-sort" value="{{.Value}}" aria-pressed="{{if .Selected}}true{{else}}false{{end}}">{{.Label}}</button>{{end -}}
+</div>
+{{template "button" .Direction}}
+</div>{{end}}

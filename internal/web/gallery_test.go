@@ -34,6 +34,7 @@ const galleryTmpl = `{{define "gallery"}}<!doctype html>
 .gallery__wide { justify-items: stretch; }
 .gallery__wide .notice { margin: 0; }
 .gallery__refresh { position: relative; overflow-x: clip; padding-bottom: var(--space-2); }
+.gallery__tools { justify-content: flex-start; }
 .gallery__panel { border: 1px solid var(--line); border-radius: var(--radius-lg); margin-bottom: var(--space-4); }
 </style>
 </head>
@@ -44,7 +45,9 @@ const galleryTmpl = `{{define "gallery"}}<!doctype html>
 <section><h2 class="gallery__label">Header · refreshing</h2>{{template "app-header" .HeaderRefreshing}}</section>
 <section><h2 class="gallery__label">Refresh control · idle, refreshing, stale (3 hours), failed first load</h2><div class="gallery__stack">{{range .Refresh}}<div class="gallery__refresh">{{template "refresh-control" .}}</div>{{end}}</div></section>
 <section><h2 class="gallery__label">Notice · stale data, failed first load</h2><div class="gallery__stack gallery__wide">{{range .Notices}}{{template "notice" .}}{{end}}</div></section>
-<section><h2 class="gallery__label">Empty state · first load, empty movies, empty TV shows</h2>{{range .Empties}}<div class="gallery__panel">{{template "empty-state" .}}</div>{{end}}</section>
+<section><h2 class="gallery__label">Empty state · first load, empty movies, empty TV shows, no search results</h2>{{range .Empties}}<div class="gallery__panel">{{template "empty-state" .}}</div>{{end}}</section>
+<section><h2 class="gallery__label">Search · empty, typed (× clears); sort control · title ascending, size descending</h2><div class="gallery__stack">{{range .Searches}}<form>{{template "search" .}}</form>{{end}}{{range .Sorts}}<form>{{template "sort-control" .}}</form>{{end}}</div></section>
+<section><h2 class="gallery__label">List controls · TV, with expand all</h2><div class="page-head__tools gallery__tools">{{template "list-controls" .Controls}}{{template "button" .ExpandAll}}</div></section>
 <section><h2 class="gallery__label">Poster · image, image that failed or is still loading, missing, generated placeholder</h2><div class="gallery__row">{{range .Posters}}{{template "poster" .}}{{end}}</div></section>
 <section><h2 class="gallery__label">Button · default, primary, disclosure collapsed and expanded, expand all, collapse all</h2><div class="gallery__row">{{range .Buttons}}{{template "button" .}}{{end}}</div></section>
 <section><h2 class="gallery__label">User tag · all 10 users, then user 11 wrapping to hue 1</h2><div class="gallery__row">{{range .Tags}}{{template "user-tag" .}}{{end}}</div></section>
@@ -75,6 +78,10 @@ type gallery struct {
 	ProgressTags           []UserTag
 	Completions            []Completion
 	SeriesRows             []SeriesRow
+	Searches               []Search
+	Sorts                  []SortControl
+	Controls               *ListControls
+	ExpandAll              Button
 }
 
 // TestGallery renders every component with edge-case fixtures and writes
@@ -126,6 +133,7 @@ func TestGallery(t *testing.T) {
 			firstLoad(library.Status{}),
 			emptyLibrary(galleryStatus(12*time.Minute, false, false), galleryNow, "movies", "movies", "Movies"),
 			emptyLibrary(galleryStatus(12*time.Minute, false, false), galleryNow, "TV shows", "series", "Shows"),
+			noMatches("movies", "Dr. Strangelove or: How I Learned"),
 		},
 		Buttons: []Button{{Label: "Clear search"}, {Label: "Open dashboard", Primary: true}},
 	}
@@ -216,6 +224,15 @@ func TestGallery(t *testing.T) {
 		g.SeriesRows = append(g.SeriesRows, row)
 	}
 
+	blade := library.View{Search: "blade"}
+	sizeDesc := library.View{Sort: library.SortSize, Desc: true}
+	g.Searches = []Search{newListControls("/movies", library.View{}, "").Search, newListControls("/movies", blade, "").Search}
+	g.Sorts = []SortControl{newListControls("/movies", library.View{}, "").Sort, newListControls("/movies", sizeDesc, "").Sort}
+	// The gallery has one list-controls form, so the others' IDs aren't
+	// repeated in it.
+	g.Controls = newListControls("/tv", library.View{Search: "hunter", Sort: library.SortYear}, "")
+	g.ExpandAll = Button{Label: "Expand all", Icon: "expand-all"}
+
 	var buf bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&buf, "gallery", g); err != nil {
 		t.Fatalf("rendering gallery: %v", err)
@@ -242,7 +259,9 @@ func TestGallery(t *testing.T) {
 		`class="poster poster--missing"`, `alt="Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb"`, `loading="lazy"`,
 		"Maximiliana Oyelaran", `aria-hidden="true">1 / 200</span>`, `aria-hidden="true">1,199 / 1,200</span>`, "Show 35 seasons", "Hide seasons",
 		"Expand all", "Collapse all", `<h2 class="series-row__title">Hunter × Hunter</h2>`, `<span class="size__note">+ 26 unknown</span>`,
-		`<span class="series-row__counts">0 seasons · 0 episodes</span>`} {
+		`<span class="series-row__counts">0 seasons · 0 episodes</span>`, "No movies match “Dr. Strangelove or: How I Learned”",
+		"Clear search</button>", `placeholder="Search titles"`, `value="blade"`, "Date added</button>", "Descending</button>", "Ascending</button>",
+		`aria-pressed="true">Size</button>`, `aria-pressed="true">Year</button>`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("gallery missing %q", want)
 		}
