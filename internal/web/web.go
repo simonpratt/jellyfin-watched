@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"time"
@@ -122,26 +123,23 @@ func parsePages() (map[string]*template.Template, error) {
 
 // movies serves the Movies page; see listView.
 func (h *handler) movies(w http.ResponseWriter, r *http.Request) {
-	v, ok := h.listView(w, r, "")
+	v, ok := h.listView(w, r, expansion{})
 	if !ok {
 		return
 	}
 	h.render(w, "movies", listBlock(w, r), newMoviesPage(h.lib.Status(), h.now(), v))
 }
 
-// tv serves the TV shows page; see listView. ?seasons=all or none expands
-// or collapses every series ("Expand all"), which swaps the page's content
-// into <main>.
+// tv serves the TV shows page; see listView and expansion. ?seasons=all or
+// none expands or collapses every series ("Expand all"), which swaps the
+// page's content into <main>.
 func (h *handler) tv(w http.ResponseWriter, r *http.Request) {
-	seasons := r.URL.Query().Get("seasons")
-	if seasons != "all" && seasons != "none" {
-		seasons = ""
-	}
-	v, ok := h.listView(w, r, seasons)
+	exp := parseExpansion(r.URL.Query())
+	v, ok := h.listView(w, r, exp)
 	if !ok {
 		return
 	}
-	h.render(w, "tv", listBlock(w, r), newTVPage(h.lib.Status(), h.now(), v, seasons))
+	h.render(w, "tv", listBlock(w, r), newTVPage(h.lib.Status(), h.now(), v, exp))
 }
 
 // listView reads a list page's search and sort from its URL (see
@@ -155,18 +153,18 @@ func (h *handler) tv(w http.ResponseWriter, r *http.Request) {
 // in doesn't matter. An
 // htmx request from the form is answered in place, and the response puts
 // the tidy URL in the address bar instead.
-func (h *handler) listView(w http.ResponseWriter, r *http.Request, seasons string) (library.View, bool) {
+func (h *handler) listView(w http.ResponseWriter, r *http.Request, exp expansion) (library.View, bool) {
 	query := r.URL.Query()
 	v := parseView(query)
 	if r.Header.Get("HX-Request") != "true" {
-		if !maps.EqualFunc(query, viewQuery(v, seasons), slices.Equal) {
-			http.Redirect(w, r, viewURL(r.URL.Path, v, seasons), http.StatusSeeOther)
+		if !maps.EqualFunc(query, viewQuery(v, exp), slices.Equal) {
+			http.Redirect(w, r, viewURL(r.URL.Path, v, exp), http.StatusSeeOther)
 			return v, false
 		}
 		return v, true
 	}
 	if r.Header.Get("HX-Trigger") == listControlsID {
-		w.Header().Set("HX-Replace-Url", viewURL(r.URL.Path, v, seasons))
+		w.Header().Set("HX-Replace-Url", viewURL(r.URL.Path, v, exp))
 	}
 	return v, true
 }
@@ -211,8 +209,10 @@ func (h *handler) renderRefreshControl(w http.ResponseWriter, st library.Status)
 }
 
 // series serves one series row as an htmx fragment, with its seasons shown
-// (?seasons=show) or hidden (?seasons=hide). The row's disclosure button
-// swaps it in place of itself.
+// (?seasons=show) or hidden (?seasons=hide). The row's disclosure swaps it
+// in place of itself. From the TV page (htmx's HX-Current-URL), the row
+// keeps that page's view and expansion, and the response puts the page's
+// new URL, with this series shown or hidden, in the address bar.
 func (h *handler) series(w http.ResponseWriter, r *http.Request) {
 	st := h.lib.Status()
 	snap, ok := st.Snapshot, st.Loaded
@@ -225,7 +225,19 @@ func (h *handler) series(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	row := newSeriesRow(sr, newUserTags(snap.Users), len(snap.Users), parseExpansion(r.URL.Query().Get("seasons")))
+	w.Header().Add("Vary", "HX-Current-URL")
+	var v library.View
+	var exp expansion
+	page, err := url.Parse(r.Header.Get("HX-Current-URL"))
+	fromTV := err == nil && page.Path == "/tv"
+	if fromTV {
+		v, exp = parseView(page.Query()), parseExpansion(page.Query())
+	}
+	exp = exp.with(sr.ID, r.URL.Query().Get("seasons") == "show")
+	if fromTV {
+		w.Header().Set("HX-Replace-Url", viewURL("/tv", v, exp))
+	}
+	row := newSeriesRow(sr, newUserTags(snap.Users), len(snap.Users), v, exp)
 	h.render(w, "tv", "series-row", row)
 }
 

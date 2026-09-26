@@ -35,7 +35,7 @@ The components live in `internal/web/templates/components/`, one file each. `int
 - **One component = one `{{define "name"}}` block taking one view-model struct** from `views.go`, called as `{{template "user-tag" .User}}`.
 - **Formatting happens in Go** (`views.go` using `format.go`). Templates only print fields and use `if`/`range`.
 - **Fragments reuse components.** Every htmx response renders the same `define` blocks as the full page.
-- **View state lives in the URL**: `q`, `sort`, `dir`, and `seasons` on TV. Build URLs with `viewURL`, so they survive the page's self-reload after a refresh (`#app` in `layout.tmpl`), back and forward, and use without JavaScript.
+- **View state lives in the URL**: `q`, `sort`, `dir`, and on TV `seasons` plus the series shown (`show`) or, under `seasons=all`, hidden (`hide`) one by one. Build URLs with `viewURL`, so they survive the page's self-reload after a refresh (`#app` in `layout.tmpl`), back and forward, and use without JavaScript.
 - **CSS uses tokens only**: `var(--…)`, with no raw hex or px font sizes. A size the design gives no token for is written as a `calc()` of space tokens (e.g. `calc(6 * var(--space-12))`), with a comment saying why.
 - **Class names are prefixed with the component name**, e.g. `.user-tag`, `.user-tag__code`, `.user-tag--progress`.
 

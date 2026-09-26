@@ -26,6 +26,17 @@ type Series struct {
 	// Seasons are the seasons to show, in season order: those with at least
 	// one available episode, without Specials unless Options.IncludeSpecials.
 	Seasons []Season
+	// Episodes is how many available episodes Seasons have between them:
+	// the episodes the roll-up below counts.
+	Episodes int
+	// CompletedBy and InProgress roll the shown seasons' completion up to
+	// the whole series, counting the same episodes as Seasons. A user who
+	// has played every one completed the series (so completed every shown
+	// season); one who has played some is in progress, with played /
+	// Episodes. Users who haven't started aren't listed. Both are in
+	// Snapshot.Users order, and nil for a series with no Episodes.
+	CompletedBy []User
+	InProgress  []Progress
 }
 
 // Season is one season of a series.
@@ -51,11 +62,12 @@ type Season struct {
 	InProgress []Progress
 }
 
-// Progress is how far one user is through a season.
+// Progress is how far one user is through a season, or through a series'
+// shown seasons.
 type Progress struct {
 	User      User
 	Played    int // available episodes the user has played; at least 1
-	Available int // the season's available episodes
+	Available int // the season's (or series') available episodes
 }
 
 // specials is the season number Jellyfin gives Specials.
@@ -100,6 +112,7 @@ func fetchTV(ctx context.Context, src Source, users []User, opts Options) ([]Ser
 // Series with their Seasons.
 type tvBuilder struct {
 	series    []Series
+	users     []User // in the order addUser saw them: Snapshot.Users order
 	seasons   []*seasonBuild
 	seasonIdx map[string]*seasonBuild // by season key
 	episodeOf map[string]*seasonBuild // available episode ID → its season
@@ -173,6 +186,7 @@ func newTVBuilder(seriesItems, seasonItems, episodes []jellyfin.Item) *tvBuilder
 // count, so a season's available episodes are the same for every user: one
 // who can't see an episode (library access) can't complete its season.
 func (b *tvBuilder) addUser(u User, eps []jellyfin.Item) {
+	b.users = append(b.users, u)
 	played := map[*seasonBuild]int{}
 	for _, ep := range eps {
 		if ep.UserData == nil || !ep.UserData.Played {
@@ -215,5 +229,33 @@ func (b *tvBuilder) result(opts Options) []Series {
 		}
 		sr.Seasons = append(sr.Seasons, s.Season)
 	}
+	for i := range b.series {
+		b.series[i].rollUp(b.users)
+	}
 	return b.series
+}
+
+// rollUp works out the series' completion from its shown seasons' own, so
+// it counts exactly the episodes they do (available ones, and Specials only
+// when shown). users is Snapshot.Users, which sets the order.
+func (sr *Series) rollUp(users []User) {
+	played := map[string]int{}
+	for _, s := range sr.Seasons {
+		sr.Episodes += s.Episodes
+		for _, u := range s.CompletedBy {
+			played[u.ID] += s.Episodes
+		}
+		for _, p := range s.InProgress {
+			played[p.User.ID] += p.Played
+		}
+	}
+	for _, u := range users {
+		switch n := played[u.ID]; {
+		case n == 0:
+		case n >= sr.Episodes:
+			sr.CompletedBy = append(sr.CompletedBy, u)
+		default:
+			sr.InProgress = append(sr.InProgress, Progress{User: u, Played: n, Available: sr.Episodes})
+		}
+	}
 }

@@ -3,6 +3,7 @@ package library
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -153,6 +154,7 @@ var tvSeries = []map[string]any{
 	{"Name": "Nobody Watched This", "Id": "sr-none", "Type": "Series"},
 	{"Name": "PAW Patrol The Movie (2021)", "Id": "sr-orphan", "Type": "Series", "ImageTags": map[string]string{"Primary": "tag-orphan"}},
 	{"Name": "No Episodes Yet", "Id": "sr-empty", "Type": "Series"},
+	{"Name": "The Wire", "Id": "sr-wire", "Type": "Series"},
 }
 
 var tvSeasons = []map[string]any{
@@ -167,9 +169,12 @@ var tvSeasons = []map[string]any{
 	// The Virtual season Jellyfin lists for episodes it couldn't place.
 	season("s-orphan-v", "sr-orphan", "Season Unknown", nil, ""),
 	season("s-empty-1", "sr-empty", "Season 1", 1, ""),
+	season("s-wire-1", "sr-wire", "Season 1", 1, ""),
+	season("s-wire-2", "sr-wire", "Season 2", 2, ""),
+	season("s-wire-3", "sr-wire", "Season 3", 3, ""),
 }
 
-var tvEpisodes = []tvEpisode{
+var tvEpisodes = append([]tvEpisode{
 	// Andor Season 1: sally watched all; AK one of three, and can't see the
 	// third episode (library access), which still counts as available.
 	{id: "e1a", series: "sr-andor", season: "s-andor-1", size: gib, playedBy: []string{"u-sally", "u-ak"}},
@@ -194,6 +199,28 @@ var tvEpisodes = []tvEpisode{
 	{id: "o1", series: "sr-orphan", size: gib, playedBy: []string{"u-h"}},
 	// Only a missing episode.
 	{id: "x1", series: "sr-empty", season: "s-empty-1", missing: true},
+}, wireEpisodes()...)
+
+// wireEpisodes is The Wire: three seasons of ten episodes, plus a missing
+// one in Season 3. sally has watched everything; AK is halfway through
+// Season 3; H has watched Seasons 1 and 3 but only three episodes of
+// Season 2.
+func wireEpisodes() []tvEpisode {
+	var eps []tvEpisode
+	for s := 1; s <= 3; s++ {
+		for e := 1; e <= 10; e++ {
+			played := []string{"u-sally"}
+			if s < 3 || e <= 5 {
+				played = append(played, "u-ak")
+			}
+			if s != 2 || e <= 3 {
+				played = append(played, "u-h")
+			}
+			eps = append(eps, tvEpisode{id: fmt.Sprintf("w%d-%d", s, e), series: "sr-wire",
+				season: fmt.Sprintf("s-wire-%d", s), size: gib, playedBy: played})
+		}
+	}
+	return append(eps, tvEpisode{id: "w3-m", series: "sr-wire", season: "s-wire-3", missing: true})
 }
 
 func refreshTV(t *testing.T, opts Options) (Snapshot, *tvServer) {
@@ -395,5 +422,51 @@ func TestTVRefreshRequests(t *testing.T) {
 		if !strings.HasPrefix(r, "GET ") || strings.Contains(r, "seasonId=") || strings.Contains(r, "parentId=") {
 			t.Errorf("request %s", r)
 		}
+	}
+}
+
+// Each series rolls its shown seasons' completion up: completed when every
+// counted episode is played, in progress with played / available across the
+// series otherwise.
+func TestTVSeriesRollUp(t *testing.T) {
+	snap, _ := refreshTV(t, Options{})
+	byID := seriesByID(snap)
+	for _, tc := range []struct {
+		series     string
+		completed  []User
+		inProgress []Progress
+	}{
+		// Everyone has watched everything.
+		{"sr-flea", []User{sally, ak, h}, nil},
+		// Nobody has watched anything.
+		{"sr-none", nil, nil},
+		// sally has watched every season; AK is halfway through the last
+		// ("25 / 30"); H completed Seasons 1 and 3 but not 2. The missing
+		// episode doesn't count.
+		{"sr-wire", []User{sally}, []Progress{{User: ak, Played: 25, Available: 30}, {User: h, Played: 23, Available: 30}}},
+		// H's played Special is left out while Specials are hidden: 3 of
+		// the 7 episodes in Seasons 1 and 2. AK's hidden episode still
+		// counts as available.
+		{"sr-andor", []User{sally}, []Progress{{User: ak, Played: 1, Available: 7}, {User: h, Played: 3, Available: 7}}},
+		// A series with no counted episodes has no roll-up.
+		{"sr-empty", nil, nil},
+	} {
+		sr := byID[tc.series]
+		if !reflect.DeepEqual(sr.CompletedBy, tc.completed) || !reflect.DeepEqual(sr.InProgress, tc.inProgress) {
+			t.Errorf("%s: completed %+v, in progress %+v; want %+v, %+v", tc.series, sr.CompletedBy, sr.InProgress, tc.completed, tc.inProgress)
+		}
+	}
+	if w := byID["sr-wire"]; w.Episodes != 30 || byID["sr-andor"].Episodes != 7 || byID["sr-empty"].Episodes != 0 {
+		t.Errorf("series episodes = %d, %d, %d; want 30, 7, 0", w.Episodes, byID["sr-andor"].Episodes, byID["sr-empty"].Episodes)
+	}
+}
+
+// With Specials shown, they count towards the roll-up like any season.
+func TestTVSeriesRollUpIncludesShownSpecials(t *testing.T) {
+	snap, _ := refreshTV(t, Options{IncludeSpecials: true})
+	andor := seriesByID(snap)["sr-andor"]
+	want := []Progress{{User: sally, Played: 7, Available: 8}, {User: ak, Played: 1, Available: 8}, {User: h, Played: 4, Available: 8}}
+	if andor.CompletedBy != nil || !reflect.DeepEqual(andor.InProgress, want) {
+		t.Errorf("Andor with Specials: completed %+v, in progress %+v; want %+v", andor.CompletedBy, andor.InProgress, want)
 	}
 }

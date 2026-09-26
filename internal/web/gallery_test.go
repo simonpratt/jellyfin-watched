@@ -58,7 +58,7 @@ const galleryTmpl = `{{define "gallery"}}<!doctype html>
 <section><h2 class="gallery__label">Completion · nobody; completed then in progress; in progress only</h2><div class="gallery__stack">{{template "completion" .Nobody}}{{range .Completions}}{{template "completion" .}}{{end}}</div></section>
 <section><h2 class="gallery__label">Movie row</h2><ul class="movie-list">{{range .Rows}}{{template "movie-row" .}}{{end}}</ul></section>
 <section><h2 class="gallery__label">Password form · empty, wrong password, too many attempts</h2><div class="gallery__stack gallery__password">{{range .PasswordForms}}{{template "password-form" .}}{{end}}</div></section>
-<section><h2 class="gallery__label">Series row · expanded, all 10 users, collapsed with 35 seasons, unknown sizes and nobody, missing poster with no seasons</h2><ul class="series-list">{{range .SeriesRows}}{{template "series-row" .}}{{end}}</ul></section>
+<section><h2 class="gallery__label">Series row · expanded (no roll-up), collapsed rolled up to all 10 users, collapsed with completed and in progress, collapsed with 35 seasons and nobody, expanded with unknown sizes and nobody, missing poster with no seasons</h2><ul class="series-list">{{range .SeriesRows}}{{template "series-row" .}}{{end}}</ul></section>
 </div>
 </body>
 </html>
@@ -204,21 +204,30 @@ func TestGallery(t *testing.T) {
 		seasons35[i] = library.Season{ID: "simp" + strconv.Itoa(i), Name: "Season " + strconv.Itoa(i+1), Episodes: 22, Size: 57 * gib}
 	}
 	series := []library.Series{
-		{ID: "hxh", Title: "Hunter × Hunter", Year: 2011, PosterTag: "t", Size: 1426 * gib / 10, Seasons: []library.Season{
-			{Name: "Season 1", Episodes: 148, Size: 1426 * gib / 10, CompletedBy: []library.User{ten[8]},
-				InProgress: []library.Progress{progress(ten[3], 97, 148), progress(ten[7], 1, 148)}}}},
-		{ID: "flea", Title: "Fleabag", Year: 2016, PosterTag: "t", Size: 118 * gib / 10, Seasons: []library.Season{
+		{ID: "hxh", Title: "Hunter × Hunter", Year: 2011, PosterTag: "t", Size: 1426 * gib / 10, Episodes: 148,
+			CompletedBy: []library.User{ten[8]}, InProgress: []library.Progress{progress(ten[3], 97, 148), progress(ten[7], 1, 148)}, Seasons: []library.Season{
+				{Name: "Season 1", Episodes: 148, Size: 1426 * gib / 10, CompletedBy: []library.User{ten[8]},
+					InProgress: []library.Progress{progress(ten[3], 97, 148), progress(ten[7], 1, 148)}}}},
+		{ID: "flea", Title: "Fleabag", Year: 2016, PosterTag: "t", Size: 118 * gib / 10, Episodes: 12, CompletedBy: ten, Seasons: []library.Season{
 			{Name: "Season 1", Episodes: 6, Size: 59 * gib / 10, CompletedBy: ten},
 			{Name: "Season 2", Episodes: 6, Size: 59 * gib / 10, CompletedBy: ten}}},
-		{ID: "simpsons", Title: "The Simpsons", Year: 1989, PosterTag: "t", Size: 1995 * gib, Seasons: seasons35},
-		{ID: "twin", Title: "Twin Peaks", Year: 1990, PosterTag: "t", Size: 381 * gib / 10, UnknownSizes: 26, Seasons: []library.Season{
+		{ID: "who", Title: "Doctor Who", Year: 2005, PosterTag: "t", Size: 3100 * gib / 10, Episodes: 200,
+			CompletedBy: []library.User{ten[0]}, InProgress: []library.Progress{progress(longName, 150, 200), progress(ten[7], 1, 200)},
+			Seasons: []library.Season{
+				{Name: "Season 1", Episodes: 100, Size: 1550 * gib / 10, CompletedBy: []library.User{ten[0], longName}, InProgress: []library.Progress{progress(ten[7], 1, 100)}},
+				{Name: "Season 2", Episodes: 100, Size: 1550 * gib / 10, CompletedBy: []library.User{ten[0]}, InProgress: []library.Progress{progress(longName, 50, 100)}}}},
+		{ID: "simpsons", Title: "The Simpsons", Year: 1989, PosterTag: "t", Size: 1995 * gib, Episodes: 770, Seasons: seasons35},
+		{ID: "twin", Title: "Twin Peaks", Year: 1990, PosterTag: "t", Size: 381 * gib / 10, UnknownSizes: 26, Episodes: 48, Seasons: []library.Season{
 			{Name: "Season 1", Episodes: 8, UnknownSizes: 8},
 			{Name: "Season 2", Episodes: 22, Size: 381 * gib / 10},
 			{Name: "Season 3", Episodes: 18, UnknownSizes: 18}}},
 		{ID: "none", Title: "Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb", Year: 1964},
 	}
+	// Hunter × Hunter and Twin Peaks are expanded; the rest are collapsed
+	// and show their roll-up.
+	shown := expansion{except: []string{"hxh", "twin"}}
 	for i, sr := range series {
-		row := newSeriesRow(sr, tags, len(ten), expandDefault)
+		row := newSeriesRow(sr, tags, len(ten), library.View{}, shown)
 		if row.Poster.Src != "" {
 			name := "s" + strconv.Itoa(i) + ".png"
 			writeStandInPoster(t, filepath.Join(posterDir, name), i+3)
@@ -264,7 +273,7 @@ func TestGallery(t *testing.T) {
 		"Christopher Albrecht", "Unknown", "+ 2 unknown", "Not completed by anyone", `All <span class="user-group__count">10</span> users`,
 		`<span class="user-group__count">6</span> users`, "user-code--hue-10",
 		`class="poster poster--missing"`, `alt="Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb"`, `loading="lazy"`,
-		"Maximiliana Oyelaran", `aria-hidden="true">1 / 200</span>`, `aria-hidden="true">1,199 / 1,200</span>`, "Show 35 seasons", "Hide seasons",
+		"Maximiliana Oyelaran", `aria-hidden="true">1 / 200</span>`, `aria-hidden="true">150 / 200</span>`, `<div class="series-row__completion">`, `aria-hidden="true">1,199 / 1,200</span>`, "Show 35 seasons", "Hide seasons",
 		"Expand all", "Collapse all", `<h2 class="series-row__title">Hunter × Hunter</h2>`, `<span class="size__note">+ 26 unknown</span>`,
 		`<span class="series-row__counts">0 seasons · 0 episodes</span>`, "No movies match “Dr. Strangelove or: How I Learned”",
 		"Clear search</button>", `placeholder="Search titles"`, `value="blade"`, "Date added</button>", "Descending</button>", "Ascending</button>",

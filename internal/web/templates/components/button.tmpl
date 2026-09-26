@@ -8,14 +8,16 @@
      so it keeps focus. The htmx fields fetch a fragment or post an action;
      the ID stays the same in the response, so htmx keeps focus on the
      button. Type "submit" makes it a form's button, with Name, Value and
-     Form; ClearsSearch clears the list-controls search. */}}
-{{define "button"}}<button type="{{or .Type "button"}}"{{if .ID}} id="{{.ID}}"{{end}} class="button{{if .Primary}} button--primary{{end}}{{if .Disclosure}} button--disclosure{{end}}{{if .Busy}} button--busy{{end}}"
-{{- if .Form}} form="{{.Form}}"{{end}}{{if .Name}} name="{{.Name}}" value="{{.Value}}"{{end}}{{if .ClearsSearch}} {{template "clear-search-js"}}{{end}}
+     Form; ClearsSearch clears the list-controls search. Href makes it a
+     link, styled the same, which is followed where htmx isn't there to
+     handle Get (no JavaScript). */}}
+{{define "button"}}{{if .Href}}<a href="{{.Href}}"{{else}}<button type="{{or .Type "button"}}"{{end}}{{if .ID}} id="{{.ID}}"{{end}} class="button{{if .Primary}} button--primary{{end}}{{if .Disclosure}} button--disclosure{{end}}{{if .Busy}} button--busy{{end}}"
+{{- if not .Href}}{{if .Form}} form="{{.Form}}"{{end}}{{if .Name}} name="{{.Name}}" value="{{.Value}}"{{end}}{{end}}{{if .ClearsSearch}} {{template "clear-search-js"}}{{end}}
 {{- if .Busy}} aria-disabled="true"{{end}}
 {{- if .Expanded}} aria-expanded="{{.Expanded}}"{{end}}{{if .Controls}} aria-controls="{{.Controls}}"{{end}}
 {{- if .Get}} hx-get="{{.Get}}"{{end}}{{if .Post}} hx-post="{{.Post}}"{{end}}{{if .Target}} hx-target="{{.Target}}"{{end}}{{if .Swap}} hx-swap="{{.Swap}}"{{end}}{{if .PushURL}} hx-push-url="true"{{end}}>
 {{- if .Disclosure}}{{if eq .Expanded "true"}}{{template "button-icon" "chevron-down"}}{{else}}{{template "button-icon" "chevron-right"}}{{end}}
-{{- else if .Icon}}{{template "button-icon" .Icon}}{{end}}{{.Label}}</button>{{end}}
+{{- else if .Icon}}{{template "button-icon" .Icon}}{{end}}{{.Label}}{{if .Href}}</a>{{else}}</button>{{end}}{{end}}
 
 {{/* button-icon: a 16×16 stroke icon in currentColor. Takes its name. The
      spinner, a three-quarter arc, turns (see components.css). */}}

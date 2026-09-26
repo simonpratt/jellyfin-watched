@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -30,8 +31,8 @@ type Tab struct {
 // the TV page's expansion.
 func newPage(title, current string, st library.Status, now time.Time, v library.View) Page {
 	carried := library.View{Sort: v.Sort, Desc: v.Desc}
-	movies := Tab{Label: "Movies", Href: viewURL("/movies", carried, ""), Current: current == "movies"}
-	tv := Tab{Label: "TV shows", Href: viewURL("/tv", carried, ""), Current: current == "tv"}
+	movies := Tab{Label: "Movies", Href: viewURL("/movies", carried, expansion{}), Current: current == "movies"}
+	tv := Tab{Label: "TV shows", Href: viewURL("/tv", carried, expansion{}), Current: current == "tv"}
 	if st.Loaded {
 		movies.Count = formatNumber(len(st.Snapshot.Movies))
 		tv.Count = formatNumber(len(st.Snapshot.Series))
@@ -258,8 +259,8 @@ func parseView(q url.Values) library.View {
 }
 
 // viewQuery is the tidy query for a view: only what differs from the
-// default (title, ascending, no search), plus the TV page's seasons.
-func viewQuery(v library.View, seasons string) url.Values {
+// default (title, ascending, no search), plus the TV page's expansion.
+func viewQuery(v library.View, exp expansion) url.Values {
 	q := url.Values{}
 	if v.Search != "" {
 		q.Set("q", v.Search)
@@ -270,20 +271,26 @@ func viewQuery(v library.View, seasons string) url.Values {
 	if v.Desc {
 		q.Set("dir", "desc")
 	}
-	if seasons != "" {
-		q.Set("seasons", seasons)
+	if exp.seasons != "" {
+		q.Set("seasons", exp.seasons)
+	}
+	if len(exp.except) > 0 {
+		q[exp.exceptKey()] = exp.except
 	}
 	return q
 }
 
 // viewURL is path with the view's tidy query.
-func viewURL(path string, v library.View, seasons string) string {
-	if q := viewQuery(v, seasons).Encode(); q != "" {
+func viewURL(path string, v library.View, exp expansion) string {
+	if q := viewQuery(v, exp).Encode(); q != "" {
 		return path + "?" + q
 	}
 	return path
 }
 
+// newListControls builds a list's search and sort form. seasons is the TV
+// page's ?seasons=, which the form keeps; the series shown or hidden one by
+// one aren't kept, so a search or sort starts them afresh.
 func newListControls(action string, v library.View, seasons string, selectOOB ...string) *ListControls {
 	c := &ListControls{
 		ID:        listControlsID,
@@ -377,6 +384,10 @@ type Button struct {
 	// Expanded is aria-expanded, "true" or "false"; "" leaves it out.
 	Expanded string
 	Controls string // aria-controls: the ID of what it expands
+	// Href makes the button a link to this URL, which is followed when
+	// htmx isn't there to handle Get (no JavaScript). Type, Name, Value and
+	// Form don't apply to a link.
+	Href string
 	// htmx: the fragment to GET, or the action to POST, where the response
 	// goes and how. PushURL puts the GET's URL in the address bar.
 	Get, Post, Target, Swap string
@@ -563,6 +574,10 @@ type SeriesRow struct {
 	Counts string // "2 seasons · 24 episodes"
 	Poster Poster
 	Size   Size
+	// Completion rolls the seasons' completion up to the series. It is nil
+	// while the seasons are shown, so the same facts aren't shown twice, and
+	// for a series with no episodes.
+	Completion *Completion
 	// Toggle shows or hides the seasons; nil when there are none.
 	Toggle *Button
 	// Seasons are shown when the series is expanded, and nil otherwise.
@@ -578,63 +593,100 @@ type SeasonRow struct {
 	Completion Completion
 }
 
-// expandedByDefault is how many seasons a series can have and still show
-// them when the page loads. Longer-running series start collapsed behind
-// "Show 35 seasons" (TV shows screen: The Simpsons). DESIGN.md §7 gives 1–5
-// seasons as typical.
-const expandedByDefault = 5
+// expansion is which series show their seasons: the TV page's ?seasons=
+// and ?show= or ?hide=. Every series starts collapsed; seasons=all
+// ("Expand all") shows them all, and seasons=none ("Collapse all") hides
+// them all, as the default does. except lists the series one has shown
+// (show=) or, under seasons=all, hidden (hide=), sorted and without
+// repeats. It lives in the URL so that the page's self-reload after a
+// refresh, back and forward, and use without JavaScript all keep it.
+type expansion struct {
+	seasons string // "all", "none" or ""
+	except  []string
+}
 
-// expansion is which series show their seasons, set by /tv?seasons= and a
-// series fragment's ?seasons=: every one ("all"/"show"), none
-// ("none"/"hide"), or the default.
-type expansion int
-
-const (
-	expandDefault expansion = iota
-	expandAll
-	expandNone
-)
-
-func parseExpansion(v string) expansion {
-	switch v {
-	case "all", "show":
-		return expandAll
-	case "none", "hide":
-		return expandNone
+// parseExpansion reads a page's expansion from its query, dropping
+// anything that doesn't apply.
+func parseExpansion(q url.Values) expansion {
+	exp := expansion{seasons: q.Get("seasons")}
+	if exp.seasons != "all" && exp.seasons != "none" {
+		exp.seasons = ""
 	}
-	return expandDefault
+	for _, id := range q[exp.exceptKey()] {
+		if id != "" {
+			exp.except = append(exp.except, id)
+		}
+	}
+	slices.Sort(exp.except)
+	exp.except = slices.Compact(exp.except)
+	return exp
+}
+
+// exceptKey is the query key that lists exceptions: "hide" under
+// seasons=all, "show" otherwise.
+func (e expansion) exceptKey() string {
+	if e.seasons == "all" {
+		return "hide"
+	}
+	return "show"
+}
+
+// expanded reports whether the series with this ID shows its seasons.
+func (e expansion) expanded(id string) bool {
+	_, listed := slices.BinarySearch(e.except, id)
+	return (e.seasons == "all") != listed
+}
+
+// with returns the expansion with the series shown or hidden.
+func (e expansion) with(id string, expanded bool) expansion {
+	if e.expanded(id) == expanded {
+		return e
+	}
+	i, listed := slices.BinarySearch(e.except, id)
+	out := expansion{seasons: e.seasons, except: slices.Clone(e.except)}
+	if listed {
+		out.except = slices.Delete(out.except, i, i+1)
+	} else {
+		out.except = slices.Insert(out.except, i, id)
+	}
+	return out
 }
 
 // seriesPath is where a series row is served as an htmx fragment.
 const seriesPath = "/tv/series/"
 
-func newSeriesRow(sr library.Series, tags map[string]UserTag, totalUsers int, exp expansion) SeriesRow {
-	episodes := 0
-	for _, s := range sr.Seasons {
-		episodes += s.Episodes
-	}
+// newSeriesRow builds a series row as it shows on the TV page with view v
+// and expansion exp: its seasons if exp expands it, otherwise its roll-up.
+// Its disclosure links to the page with the series the other way (without
+// JavaScript), and with htmx fetches the row that way from seriesPath.
+func newSeriesRow(sr library.Series, tags map[string]UserTag, totalUsers int, v library.View, exp expansion) SeriesRow {
 	row := SeriesRow{
 		ID:        "series-" + sr.ID,
 		Title:     sr.Title,
 		Year:      formatYear(sr.Year),
-		Counts:    formatCount(len(sr.Seasons), "season", "seasons") + " · " + formatCount(episodes, "episode", "episodes"),
+		Counts:    formatCount(len(sr.Seasons), "season", "seasons") + " · " + formatCount(sr.Episodes, "episode", "episodes"),
 		Poster:    newPoster(sr.ID, sr.Title, sr.PosterTag),
 		Size:      newSumSize(sr.Size, sr.UnknownSizes),
 		SeasonsID: "series-" + sr.ID + "-seasons",
 	}
+	expanded := exp.expanded(sr.ID) && len(sr.Seasons) > 0
+	if !expanded && sr.Episodes > 0 {
+		c := newCompletion(sr.CompletedBy, sr.InProgress, tags, totalUsers)
+		row.Completion = &c
+	}
 	if len(sr.Seasons) == 0 {
 		return row
 	}
-	expanded := exp == expandAll || (exp == expandDefault && len(sr.Seasons) <= expandedByDefault)
 	toggle := &Button{
 		Disclosure: true,
 		ID:         row.ID + "-toggle",
+		Href:       viewURL("/tv", v, exp.with(sr.ID, !expanded)) + "#" + row.ID,
 		Target:     "closest .series-row",
 		Swap:       "outerHTML",
 	}
-	href := seriesPath + url.PathEscape(sr.ID) + "?seasons="
+	get := seriesPath + url.PathEscape(sr.ID) + "?seasons="
 	if expanded {
-		toggle.Label, toggle.Expanded, toggle.Controls, toggle.Get = "Hide seasons", "true", row.SeasonsID, href+"hide"
+		toggle.Label, toggle.Expanded, toggle.Controls, toggle.Get = "Hide seasons", "true", row.SeasonsID, get+"hide"
 		for _, s := range sr.Seasons {
 			row.Seasons = append(row.Seasons, SeasonRow{
 				Name:       s.Name,
@@ -644,7 +696,7 @@ func newSeriesRow(sr library.Series, tags map[string]UserTag, totalUsers int, ex
 			})
 		}
 	} else {
-		toggle.Label, toggle.Expanded, toggle.Get = "Show "+formatCount(len(sr.Seasons), "season", "seasons"), "false", href+"show"
+		toggle.Label, toggle.Expanded, toggle.Get = "Show "+formatCount(len(sr.Seasons), "season", "seasons"), "false", get+"show"
 	}
 	row.Toggle = toggle
 	return row
@@ -660,10 +712,8 @@ func onDisk(bytes int64) string {
 	return " · " + value + " " + unit + " on disk"
 }
 
-// newTVPage builds the TV shows page. seasons is the page's ?seasons=
-// ("all", "none" or ""), from which exp comes.
-func newTVPage(st library.Status, now time.Time, v library.View, seasons string) TVPage {
-	exp := parseExpansion(seasons)
+// newTVPage builds the TV shows page with view v and expansion exp.
+func newTVPage(st library.Status, now time.Time, v library.View, exp expansion) TVPage {
 	p := TVPage{Page: newPage("TV shows", "tv", st, now, v), Loaded: st.Loaded,
 		Notice: newNotice(st, now), Empty: firstLoad(st)}
 	if !st.Loaded {
@@ -682,13 +732,13 @@ func newTVPage(st library.Status, now time.Time, v library.View, seasons string)
 		bytes += sr.Size
 	}
 	p.Summary = formatCount(len(snap.Series), "series", "series") + " · " + formatCount(nSeasons, "season", "seasons") + onDisk(bytes)
-	p.Controls = newListControls("/tv", v, seasons, "tv-expand-all")
+	p.Controls = newListControls("/tv", v, exp.seasons, "tv-expand-all")
 	// "Expand all" keeps the search and sort; it is there even when the
 	// search matches nothing, so the swapped-in page head keeps its place.
 	p.ExpandAll = &Button{Label: "Expand all", Icon: "expand-all", ID: "tv-expand-all",
-		Get: viewURL("/tv", v, "all"), Target: "main", Swap: "innerHTML", PushURL: true}
-	if exp == expandAll {
-		p.ExpandAll.Label, p.ExpandAll.Icon, p.ExpandAll.Get = "Collapse all", "collapse-all", viewURL("/tv", v, "none")
+		Get: viewURL("/tv", v, expansion{seasons: "all"}), Target: "main", Swap: "innerHTML", PushURL: true}
+	if exp.seasons == "all" {
+		p.ExpandAll.Label, p.ExpandAll.Icon, p.ExpandAll.Get = "Collapse all", "collapse-all", viewURL("/tv", v, expansion{seasons: "none"})
 	}
 
 	series := library.ArrangeSeries(snap.Series, v)
@@ -701,7 +751,7 @@ func newTVPage(st library.Status, now time.Time, v library.View, seasons string)
 	tags := newUserTags(snap.Users)
 	p.Series = make([]SeriesRow, 0, len(series))
 	for _, sr := range series {
-		p.Series = append(p.Series, newSeriesRow(sr, tags, len(snap.Users), exp))
+		p.Series = append(p.Series, newSeriesRow(sr, tags, len(snap.Users), v, exp))
 	}
 	return p
 }

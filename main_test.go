@@ -262,7 +262,7 @@ func TestAppServesTVShowsWithGETOnly(t *testing.T) {
 	fake := &fakeJellyfin{}
 	base, logs, stop := startApp(t, fake)
 
-	page := waitFor(t, base+"/tv", "Andor")
+	page := waitFor(t, base+"/tv?seasons=all", "Andor")
 	fragment := fetch(t, base+"/tv/series/sr1?seasons=hide")
 	stop()
 	for _, want := range []string{
@@ -297,7 +297,7 @@ func TestAppServesTVShowsWithGETOnly(t *testing.T) {
 
 func TestAppShowsSpecialsWhenIncluded(t *testing.T) {
 	base, _, stop := startAppWithEnv(t, &fakeJellyfin{}, map[string]string{"INCLUDE_SPECIALS": "true"})
-	page := waitFor(t, base+"/tv", "Andor")
+	page := waitFor(t, base+"/tv?seasons=all", "Andor")
 	stop()
 	if !strings.Contains(page, `<h3 class="season-row__name">Specials</h3>`) {
 		t.Error("Specials hidden with INCLUDE_SPECIALS=true")
