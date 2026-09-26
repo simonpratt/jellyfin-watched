@@ -1,7 +1,10 @@
 {{/* season-row: one season under its series. Takes a SeasonRow. Name and
-     episode count, size, then who completed it and who is in progress. */}}
-{{define "season-row"}}<li class="season-row">
-<div class="season-row__main"><h3 class="season-row__name">{{.Name}}</h3><span class="season-row__episodes">{{.Episodes}}</span></div>
+     episode count, size, then who completed it and who is in progress.
+     --card is the poster grid's variant: the same facts stacked under the
+     season's poster. */}}
+{{define "season-row"}}<li class="season-row{{if .Card}} season-row--card{{end}}">
+{{if .Poster}}{{template "poster" .Poster}}
+{{end}}<div class="season-row__main"><h3 class="season-row__name">{{.Name}}</h3><span class="season-row__episodes">{{.Episodes}}</span></div>
 <div class="season-row__facts">
 <div class="season-row__size">{{template "size" .Size}}</div>
 <div class="season-row__completion">{{template "completion" .Completion}}</div>

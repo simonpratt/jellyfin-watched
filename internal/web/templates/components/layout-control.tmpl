@@ -1,0 +1,19 @@
+{{/* layout-control: List and Grid, a segmented group like the sort
+     control's, each with a small mark before its label. Takes a
+     LayoutControl. It sits in the list-controls form: the hidden field
+     carries the current layout, so searching and sorting keep it, and each
+     segment is a submit button that changes it (set-layout), with or
+     without JavaScript. The selected one is marked by fill, weight and an
+     underline (aria-pressed), as in the sort control. */}}
+{{define "layout-control"}}<div id="layout-control" class="layout-control">
+<input type="hidden" name="layout" value="{{.Layout}}">
+<div class="layout-control__segments" role="group" aria-label="Layout">
+{{- range .Options}}<button type="submit" id="{{.ID}}" class="layout-control__segment" name="set-layout" value="{{.Value}}" aria-pressed="{{if .Selected}}true{{else}}false{{end}}">{{template "layout-icon" .Value}}{{.Label}}</button>{{end -}}
+</div>
+</div>{{end}}
+
+{{/* layout-icon: a 16×16 stroke mark in currentColor: three lines for
+     "list", four tiles for "grid". Takes the layout. */}}
+{{define "layout-icon"}}<svg class="layout-control__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+{{- if eq . "grid"}}<rect x="2.75" y="2.75" width="4" height="4" rx="0.75"/><rect x="9.25" y="2.75" width="4" height="4" rx="0.75"/><rect x="2.75" y="9.25" width="4" height="4" rx="0.75"/><rect x="9.25" y="9.25" width="4" height="4" rx="0.75"/>
+{{- else}}<path d="M2.75 4h10.5M2.75 8h10.5M2.75 12h10.5"/>{{end}}</svg>{{end}}

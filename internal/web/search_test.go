@@ -147,12 +147,12 @@ func TestControlsSwapResultsWithHtmx(t *testing.T) {
 	h := newTestHandler(t, searchMovies)
 	body := get(t, h, "/movies").Body.String()
 	assertContains(t, body,
-		`hx-get="/movies" hx-trigger="submit, input delay:200ms from:#search-q" hx-target="#results" hx-select="#results" hx-swap="outerHTML" hx-select-oob="#page-summary,#sort-control" hx-sync="this:replace"`,
+		`hx-get="/movies" hx-trigger="submit, input delay:200ms from:#search-q" hx-target="#results" hx-select="#results" hx-swap="outerHTML" hx-select-oob="#page-summary,#sort-control,#layout-control" hx-sync="this:replace"`,
 		`<div id="results" class="results">`,
 		`<div id="sort-control" class="sort-control">`,
 	)
 	tv := get(t, h, "/tv").Body.String()
-	assertContains(t, tv, `hx-get="/tv"`, `hx-select-oob="#page-summary,#sort-control,#tv-expand-all"`)
+	assertContains(t, tv, `hx-get="/tv"`, `hx-select-oob="#page-summary,#sort-control,#layout-control,#tv-expand-all"`)
 
 	rec := htmxGet(t, h, "/movies?q=blade&sort=title&dir=asc&set-sort=size")
 	if rec.Code != http.StatusOK {
@@ -227,7 +227,8 @@ func TestEverySortLooksTheSame(t *testing.T) {
 				t.Errorf("%s: segment styled %q", sort, m[1])
 			}
 		}
-		if n := strings.Count(body, `aria-pressed="true"`); n != 1 {
+		sortControl := body[strings.Index(body, `<div id="sort-control"`):strings.Index(body, `<div id="layout-control"`)]
+		if n := strings.Count(sortControl, `aria-pressed="true"`); n != 1 {
 			t.Errorf("%s: %d segments selected", sort, n)
 		}
 	}

@@ -303,19 +303,22 @@ type Image struct {
 	ContentType string // e.g. "image/webp"
 }
 
-// PrimaryImage downloads an item's poster, scaled to fill about 96×144:
-// twice the 48×72 slot, for high-density screens.
+// PrimaryImage downloads an item's poster, scaled to fill about width ×
+// height pixels. The dashboard asks for twice the size of the slot it shows
+// the poster in, for high-density screens.
 //
 // Confirmed against Jellyfin 12.1.0 (not yet checked on 10.10 or 10.11):
 // GET /Items/{id}/Images/Primary returns the image bytes. fillWidth and
 // fillHeight scale to about 96×144 (some come back 97×144 or 96×145; the
-// page crops to fill) at ~6 KB, against ~500 KB unscaled. The
+// page crops to fill) at ~6 KB, against ~500 KB unscaled. 320×480 (the
+// poster grid's card) works the same way: 320×480 or 322×480 at 20–45 KB.
+// The
 // response format follows Accept ("Vary: Accept"): image/webp when offered,
 // otherwise image/jpeg. An item with no poster answers 404, and a malformed
 // ID 400.
-func (c *Client) PrimaryImage(ctx context.Context, itemID string) (Image, error) {
+func (c *Client) PrimaryImage(ctx context.Context, itemID string, width, height int) (Image, error) {
 	path := "/Items/" + url.PathEscape(itemID) + "/Images/Primary"
-	q := url.Values{"fillWidth": {"96"}, "fillHeight": {"144"}, "quality": {"90"}}
+	q := url.Values{"fillWidth": {strconv.Itoa(width)}, "fillHeight": {strconv.Itoa(height)}, "quality": {"90"}}
 	resp, err := c.get(ctx, path, q, "image/webp,image/jpeg;q=0.9")
 	if err != nil {
 		return Image{}, err

@@ -1,5 +1,7 @@
-{{/* movie-row: one movie in the Movies list. Takes a MovieRow. */}}
-{{define "movie-row"}}<li class="movie-row">
+{{/* movie-row: one movie in the Movies list. Takes a MovieRow. --card is the
+     poster grid's variant: the same markup and facts, stacked under a large
+     poster (see components.css). */}}
+{{define "movie-row"}}<li class="movie-row{{if .Card}} movie-row--card{{end}}">
 {{template "poster" .Poster}}
 <div class="movie-row__main">
 <h2 class="movie-row__title">{{.Title}}</h2>

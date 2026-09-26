@@ -1,13 +1,14 @@
-{{/* list-controls: the search box and sort control above a list, as one
-     GET form. Takes a ListControls.
+{{/* list-controls: the search box, sort control and layout control above
+     a list, as one GET form. Takes a ListControls.
 
      With no JavaScript: Enter in the search box submits through the first,
      nameless (hidden) button, so it adds nothing; each sort segment and the
-     direction button is a submit button of its own (set-sort, set-dir).
+     direction button and each layout segment is a submit button of its own
+     (set-sort, set-dir, set-layout).
 
      With htmx: typing submits after a 200 ms pause, and a newer request
      replaces one in flight. The response is the page's content, from which
-     #results is swapped in, plus the summary and sort control (and on TV
+     #results is swapped in, plus the summary, sort and layout controls (and on TV
      the "Expand all" button, whose URL carries the view). The search box
      itself is never swapped, so focus and the caret stay put. */}}
 {{define "list-controls"}}<form id="{{.ID}}" class="list-controls" role="search" action="{{.Action}}" method="get" hx-get="{{.Action}}" hx-trigger="submit, input delay:200ms from:#{{.Search.ID}}" hx-target="#results" hx-select="#results" hx-swap="outerHTML" hx-select-oob="{{.SelectOOB}}" hx-sync="this:replace">
@@ -15,4 +16,5 @@
 {{- if .Seasons}}<input type="hidden" name="seasons" value="{{.Seasons}}">{{end}}
 {{template "search" .Search}}
 {{template "sort-control" .Sort}}
+{{template "layout-control" .Layout}}
 </form>{{end}}

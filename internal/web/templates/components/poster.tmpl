@@ -1,9 +1,10 @@
-{{/* poster: the fixed 48×72 (2:3) cover slot. Takes a Poster. Three
+{{/* poster: the fixed 48×72 (2:3) cover slot; --large, the poster grid's,
+     fills its card's width at 2:3 instead. Takes a Poster. Three
      variants: the image, lazy and sized so the row never shifts, on a plain
      block that shows while it loads; the missing box (dashed hairline and an
      image-off mark) when Jellyfin has no poster; and the generated
      placeholder, the title's initial on a plain block. The image's alt is
      the title; the other two are decorative, since the row names the item. */}}
-{{define "poster"}}{{if .Src}}<div class="poster"><img class="poster__image" src="{{.Src}}" alt="{{.Title}}" width="48" height="72" loading="lazy" decoding="async"></div>
-{{- else if .Missing}}<div class="poster poster--missing" aria-hidden="true"><svg class="poster__missing-mark" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1" focusable="false"><rect x="0.5" y="0.5" width="11" height="11"/><path d="M0.5 0.5l11 11"/></svg></div>
-{{- else}}<div class="poster poster--placeholder" aria-hidden="true"><span class="poster__initial">{{.Initial}}</span></div>{{end}}{{end}}
+{{define "poster"}}{{if .Src}}<div class="poster{{if .Large}} poster--large{{end}}"><img class="poster__image" src="{{.Src}}" alt="{{.Title}}" {{if .Large}}width="160" height="240"{{else}}width="48" height="72"{{end}} loading="lazy" decoding="async"></div>
+{{- else if .Missing}}<div class="poster{{if .Large}} poster--large{{end}} poster--missing" aria-hidden="true"><svg class="poster__missing-mark" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1" focusable="false"><rect x="0.5" y="0.5" width="11" height="11"/><path d="M0.5 0.5l11 11"/></svg></div>
+{{- else}}<div class="poster{{if .Large}} poster--large{{end}} poster--placeholder" aria-hidden="true"><span class="poster__initial">{{.Initial}}</span></div>{{end}}{{end}}

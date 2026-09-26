@@ -31,10 +31,11 @@ type Library interface {
 	RefreshNow() bool
 }
 
-// Posters provides poster images; *artwork.Cache satisfies it. tag is the
-// poster's current tag in the snapshot.
+// Posters provides poster images, scaled to fill width × height;
+// *artwork.Cache satisfies it. tag is the poster's current tag in the
+// snapshot.
 type Posters interface {
-	Poster(ctx context.Context, itemID, tag string) (data []byte, contentType string, err error)
+	Poster(ctx context.Context, itemID, tag string, width, height int) (data []byte, contentType string, err error)
 }
 
 type handler struct {
@@ -141,10 +142,10 @@ func (h *handler) tv(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	h.render(w, "tv", listBlock(w, r), newTVPage(h.lib.Status(), h.now(), v, seasons))
+	h.render(w, "tv", listBlock(w, r), newTVPage(h.lib.Status(), h.now(), v))
 }
 
-// listView reads a list page's search and sort from its URL (see
+// listView reads a list page's search, sort and layout from its URL (see
 // parseView), which is where they live so that a reload, a shared link or
 // the page reloading itself after a refresh shows the same view.
 //
@@ -155,18 +156,19 @@ func (h *handler) tv(w http.ResponseWriter, r *http.Request) {
 // in doesn't matter. An
 // htmx request from the form is answered in place, and the response puts
 // the tidy URL in the address bar instead.
-func (h *handler) listView(w http.ResponseWriter, r *http.Request, seasons string) (library.View, bool) {
+func (h *handler) listView(w http.ResponseWriter, r *http.Request, seasons string) (viewState, bool) {
 	query := r.URL.Query()
 	v := parseView(query)
+	v.Seasons = seasons
 	if r.Header.Get("HX-Request") != "true" {
-		if !maps.EqualFunc(query, viewQuery(v, seasons), slices.Equal) {
-			http.Redirect(w, r, viewURL(r.URL.Path, v, seasons), http.StatusSeeOther)
+		if !maps.EqualFunc(query, viewQuery(v), slices.Equal) {
+			http.Redirect(w, r, viewURL(r.URL.Path, v), http.StatusSeeOther)
 			return v, false
 		}
 		return v, true
 	}
 	if r.Header.Get("HX-Trigger") == listControlsID {
-		w.Header().Set("HX-Replace-Url", viewURL(r.URL.Path, v, seasons))
+		w.Header().Set("HX-Replace-Url", viewURL(r.URL.Path, v))
 	}
 	return v, true
 }
@@ -211,8 +213,8 @@ func (h *handler) renderRefreshControl(w http.ResponseWriter, st library.Status)
 }
 
 // series serves one series row as an htmx fragment, with its seasons shown
-// (?seasons=show) or hidden (?seasons=hide). The row's disclosure button
-// swaps it in place of itself.
+// (?seasons=show) or hidden (?seasons=hide), as a grid card with
+// ?layout=grid. The row's disclosure button swaps it in place of itself.
 func (h *handler) series(w http.ResponseWriter, r *http.Request) {
 	st := h.lib.Status()
 	snap, ok := st.Snapshot, st.Loaded
@@ -225,17 +227,31 @@ func (h *handler) series(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	row := newSeriesRow(sr, newUserTags(snap.Users), len(snap.Users), parseExpansion(r.URL.Query().Get("seasons")))
+	q := r.URL.Query()
+	row := newSeriesRow(sr, newUserTags(snap.Users), len(snap.Users), parseExpansion(q.Get("seasons")), q.Get("layout") == "grid")
 	h.render(w, "tv", "series-row", row)
 }
 
 // poster serves a poster from the cache, fetching it from Jellyfin on first
-// use. Only items in the library snapshot that have a poster are served, so
-// the route can't be used to reach anything else on Jellyfin. The response
-// is built afresh: no Jellyfin header is passed through.
+// use, at the list's size or with ?size=grid the grid's (see posterSize).
+// Only items in the library snapshot that have a poster are served, at one
+// of those two sizes, so the route can't be used to reach anything else on
+// Jellyfin. The response is built afresh: no Jellyfin header is passed
+// through.
 func (h *handler) poster(w http.ResponseWriter, r *http.Request) {
 	st := h.lib.Status()
 	snap, ok := st.Snapshot, st.Loaded
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	sizes := r.URL.Query()["size"]
+	size, ok := posterSizes[""]
+	if len(sizes) > 1 {
+		ok = false
+	} else if len(sizes) == 1 {
+		size, ok = posterSizes[sizes[0]]
+	}
 	if !ok {
 		http.NotFound(w, r)
 		return
@@ -246,7 +262,7 @@ func (h *handler) poster(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	data, contentType, err := h.posters.Poster(r.Context(), id, tag)
+	data, contentType, err := h.posters.Poster(r.Context(), id, tag, size.width, size.height)
 	if err != nil {
 		if r.Context().Err() == nil {
 			h.log.Warn("fetching poster", "item", id, "err", err)
