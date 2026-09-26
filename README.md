@@ -2,6 +2,10 @@
 
 A small, self-hosted, **read-only** dashboard for a Jellyfin server. It lists every movie and TV season with its cover art and size on disk, and shows which users have finished it or are partway through.
 
+![Movies: each movie with its poster, size on disk and the users who have finished it](docs/movies.png)
+
+![TV shows: each series with its size and each user's episode progress](docs/tv-shows.png)
+
 ## Deploy
 
 Jellyfin-watched is a single container, configured entirely through environment variables. It needs a Jellyfin admin API key (Jellyfin Dashboard → API Keys).
