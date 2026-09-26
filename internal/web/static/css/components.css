@@ -212,14 +212,14 @@ a {
 }
 
 /* -------------------------------------------------------------- page-head */
-/* Page title and summary on the left; search and sort on the right. */
+/* Page title and summary, with search and sort on a row beneath them, the
+   same on every tab. */
 
 .page-head {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--space-4) var(--space-6);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
   padding: var(--space-8) var(--space-8) var(--space-5);
   border-bottom: 1px solid var(--line);
 }
@@ -241,7 +241,7 @@ a {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: var(--space-3) var(--space-5);
 }
 
@@ -566,22 +566,21 @@ a {
 }
 
 /* -------------------------------------------------------- list-controls */
-/* The search box, then the sort control, as one form on the page head's
-   right. On a narrow screen the search box takes the full width and the
+/* The search box, then the sort control, as one form on its own row under
+   the page title. On a narrow screen the search box takes the full width and the
    sort control wraps beneath it. */
 
 .list-controls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: var(--space-3) var(--space-5);
 }
 
 @media (max-width: 40rem) {
   .page-head__tools,
   .list-controls {
-    justify-content: flex-start;
     width: 100%;
   }
 }

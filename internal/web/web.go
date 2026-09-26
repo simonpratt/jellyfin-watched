@@ -181,7 +181,7 @@ func listBlock(w http.ResponseWriter, r *http.Request) string {
 	w.Header().Add("Vary", "HX-Request, HX-Target")
 	if r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true" &&
 		r.Header.Get("HX-Target") != "app" {
-		return "content"
+		return "list-fragment"
 	}
 	return "layout"
 }

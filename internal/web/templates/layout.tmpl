@@ -34,12 +34,23 @@
      refresh control on the right. Takes a Page. */}}
 {{define "app-header"}}<header class="app-header">
 <a class="app-header__brand" href="/movies">{{template "spool-mark" "app-header__mark"}}<span class="app-header__name">Spool</span></a>
-<nav class="app-header__tabs" aria-label="Library">
-{{range .Tabs}}<a class="app-header__tab" href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Label}}{{if .Count}} <span class="app-header__count">{{.Count}}</span>{{end}}</a>
-{{end}}</nav>
+<nav id="app-tabs" class="app-header__tabs" aria-label="Library">
+{{template "app-tabs" .}}</nav>
 <div class="app-header__actions">{{template "refresh-control" .Refresh}}</div>
 </header>
 {{end}}
+
+{{/* app-tabs: the Movies / TV shows tab links. Takes a Page. Their URLs
+     carry the sort and layout, so a search or sort swap sends them again
+     (list-fragment). */}}
+{{define "app-tabs"}}{{range .Tabs}}<a class="app-header__tab" href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Label}}{{if .Count}} <span class="app-header__count">{{.Count}}</span>{{end}}</a>
+{{end}}{{end}}
+
+{{/* list-fragment: a list page's htmx response: its content, plus the tabs
+     swapped out of band into the header so they follow the new view. */}}
+{{define "list-fragment"}}<nav id="app-tabs" class="app-header__tabs" aria-label="Library" hx-swap-oob="true">
+{{template "app-tabs" .Page}}</nav>
+{{template "content" .}}{{end}}
 
 {{/* spool-mark: the reel, drawn in currentColor. Takes its CSS class. The
      same shape as static/favicon.svg. */}}

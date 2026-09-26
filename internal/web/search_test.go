@@ -162,7 +162,7 @@ func TestControlsSwapResultsWithHtmx(t *testing.T) {
 		t.Errorf("HX-Replace-Url = %q", got)
 	}
 	frag := rec.Body.String()
-	assertNotContains(t, frag, "<html", "app-header")
+	assertNotContains(t, frag, "<html", "app-header__actions")
 	assertContains(t, frag, `<div id="results" class="results">`, `id="page-summary"`, `aria-pressed="true">Size</button>`)
 	if got := strings.Join(titles(frag), "|"); got != "Blade Runner|Blade Runner 2049" {
 		t.Errorf("fragment rows: %s", got)
@@ -232,4 +232,32 @@ func TestEverySortLooksTheSame(t *testing.T) {
 			t.Errorf("%s: %d segments selected", sort, n)
 		}
 	}
+}
+
+// The tabs carry the sort, direction and layout to the other tab, but not
+// the search or the TV page's expansion.
+func TestTabsCarrySortAndLayoutButNotSearch(t *testing.T) {
+	h := newTestHandler(t, searchMovies)
+	body := get(t, h, "/movies?q=blade&sort=size&dir=desc&layout=grid").Body.String()
+	assertContains(t, body,
+		`<nav id="app-tabs" class="app-header__tabs" aria-label="Library">`,
+		`href="/movies?dir=desc&amp;layout=grid&amp;sort=size" aria-current="page">Movies`,
+		`href="/tv?dir=desc&amp;layout=grid&amp;sort=size">TV shows`)
+
+	tv := get(t, h, "/tv?q=simp&sort=year&seasons=all").Body.String()
+	assertContains(t, tv, `href="/movies?sort=year">Movies`, `href="/tv?sort=year" aria-current="page">TV shows`)
+
+	// A search or sort swap sends the tabs along, swapped out of band into
+	// the header, so they follow the new sort.
+	frag := htmxGet(t, h, "/movies?q=blade&set-sort=year").Body.String()
+	assertContains(t, frag, `<nav id="app-tabs" class="app-header__tabs" aria-label="Library" hx-swap-oob="true">`,
+		`href="/tv?sort=year">TV shows`)
+	assertNotContains(t, frag, "<html", "app-header__actions")
+}
+
+func TestMoviesSummaryShowsSizeOnDisk(t *testing.T) {
+	h := newTestHandler(t, searchMovies)
+	// 30 + 50 + 20 GiB known; Blade Runner 2049's size is unknown.
+	assertContains(t, get(t, h, "/movies").Body.String(),
+		`<p id="page-summary" class="page-head__summary">4 movies · 100.0 GB on disk</p>`)
 }

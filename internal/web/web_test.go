@@ -186,7 +186,7 @@ func TestHeaderHasMarkNameTabsAndRefreshSlot(t *testing.T) {
 	for _, want := range []string{
 		`class="app-header__mark"`,
 		`>Spool<`,
-		`<nav class="app-header__tabs" aria-label="Library">`,
+		`<nav id="app-tabs" class="app-header__tabs" aria-label="Library">`,
 		`<a class="app-header__tab" href="/movies" aria-current="page">Movies <span class="app-header__count">1,284</span></a>`,
 		`<a class="app-header__tab" href="/tv">TV shows <span class="app-header__count">212</span></a>`,
 		`class="app-header__actions"`,

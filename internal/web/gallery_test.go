@@ -126,9 +126,9 @@ func TestGallery(t *testing.T) {
 		{Title: "Супер фильм", Year: 2020, Added: added, Size: 44 * gib / 10, CompletedBy: []library.User{ten[3]}},
 	}
 	g := gallery{
-		HeaderMovies:     newPage("Movies", "movies", galleryStatus(12*time.Minute, false, false), galleryNow),
-		HeaderTV:         newPage("TV shows", "tv", library.Status{Refreshing: true}, galleryNow),
-		HeaderRefreshing: newPage("Movies", "movies", galleryStatus(12*time.Minute, true, false), galleryNow),
+		HeaderMovies:     newPage("Movies", "movies", galleryStatus(12*time.Minute, false, false), galleryNow, viewState{}),
+		HeaderTV:         newPage("TV shows", "tv", library.Status{Refreshing: true}, galleryNow, viewState{}),
+		HeaderRefreshing: newPage("Movies", "movies", galleryStatus(12*time.Minute, true, false), galleryNow, viewState{}),
 		Refresh: []RefreshControl{
 			newRefreshControl(galleryStatus(12*time.Minute, false, false), galleryNow),
 			newRefreshControl(galleryStatus(12*time.Minute, true, false), galleryNow),

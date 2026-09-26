@@ -175,8 +175,8 @@ func TestTVExpandAll(t *testing.T) {
 	}
 }
 
-// An htmx request gets the page's content alone, to swap into <main>; a
-// normal load or an htmx history restore gets the whole page.
+// An htmx request gets the page's content, to swap into <main>, plus only
+// the header's tabs (out of band); a normal load or an htmx history restore gets the whole page.
 func TestTVContentFragmentForHtmx(t *testing.T) {
 	h := newTestHandler(t, tvSnap)
 	req := httptest.NewRequest(http.MethodGet, "/tv?seasons=all", nil)
@@ -184,7 +184,7 @@ func TestTVContentFragmentForHtmx(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	body := rec.Body.String()
-	if strings.Contains(body, "<html") || strings.Contains(body, "app-header") || !strings.Contains(body, `<h1 class="page-head__title">TV shows</h1>`) {
+	if strings.Contains(body, "<html") || strings.Contains(body, "<header") || !strings.Contains(body, `<h1 class="page-head__title">TV shows</h1>`) {
 		t.Errorf("htmx response is not the content alone:\n%.300s", body)
 	}
 	if !strings.Contains(rec.Header().Get("Vary"), "HX-Request") {

@@ -25,10 +25,13 @@ type Tab struct {
 	Current bool
 }
 
-// newPage builds the layout's view model. current is "movies" or "tv".
-func newPage(title, current string, st library.Status, now time.Time) Page {
-	movies := Tab{Label: "Movies", Href: "/movies", Current: current == "movies"}
-	tv := Tab{Label: "TV shows", Href: "/tv", Current: current == "tv"}
+// newPage builds the layout's view model. current is "movies" or "tv". The
+// tabs carry v's sort, direction and layout to the other tab, but not its
+// search or the TV page's expansion.
+func newPage(title, current string, st library.Status, now time.Time, v viewState) Page {
+	carried := viewState{View: library.View{Sort: v.Sort, Desc: v.Desc}, Grid: v.Grid}
+	movies := Tab{Label: "Movies", Href: viewURL("/movies", carried), Current: current == "movies"}
+	tv := Tab{Label: "TV shows", Href: viewURL("/tv", carried), Current: current == "tv"}
 	if st.Loaded {
 		movies.Count = formatNumber(len(st.Snapshot.Movies))
 		tv.Count = formatNumber(len(st.Snapshot.Series))
@@ -587,13 +590,18 @@ func newMovieRow(m library.Movie, tags map[string]UserTag, totalUsers int, card 
 }
 
 func newMoviesPage(st library.Status, now time.Time, v viewState) MoviesPage {
-	p := MoviesPage{Page: newPage("Movies", "movies", st, now), Loaded: st.Loaded, Grid: v.Grid,
+	p := MoviesPage{Page: newPage("Movies", "movies", st, now, v), Loaded: st.Loaded, Grid: v.Grid,
 		Notice: newNotice(st, now), Empty: firstLoad(st)}
 	if !st.Loaded {
 		return p
 	}
 	snap := st.Snapshot
 	p.Summary = formatCount(len(snap.Movies), "movie", "movies")
+	var bytes int64
+	for _, m := range snap.Movies {
+		bytes += m.Size
+	}
+	p.Summary += onDisk(bytes)
 	if len(snap.Movies) == 0 {
 		p.Empty = emptyLibrary(st, now, "movies", "movies", "Movies")
 		return p
@@ -744,11 +752,21 @@ func newSeriesRow(sr library.Series, tags map[string]UserTag, totalUsers int, ex
 	return row
 }
 
+// onDisk is the summary's " · 9.7 TB on disk", counting only known sizes,
+// or nothing when no size is known.
+func onDisk(bytes int64) string {
+	if bytes <= 0 {
+		return ""
+	}
+	value, unit := formatSize(bytes)
+	return " · " + value + " " + unit + " on disk"
+}
+
 // newTVPage builds the TV shows page. v.Seasons is the page's ?seasons=
 // ("all", "none" or ""), from which exp comes.
 func newTVPage(st library.Status, now time.Time, v viewState) TVPage {
 	exp := parseExpansion(v.Seasons)
-	p := TVPage{Page: newPage("TV shows", "tv", st, now), Loaded: st.Loaded, Grid: v.Grid,
+	p := TVPage{Page: newPage("TV shows", "tv", st, now, v), Loaded: st.Loaded, Grid: v.Grid,
 		Notice: newNotice(st, now), Empty: firstLoad(st)}
 	if !st.Loaded {
 		return p
@@ -765,11 +783,7 @@ func newTVPage(st library.Status, now time.Time, v viewState) TVPage {
 		nSeasons += len(sr.Seasons)
 		bytes += sr.Size
 	}
-	p.Summary = formatCount(len(snap.Series), "series", "series") + " · " + formatCount(nSeasons, "season", "seasons")
-	if bytes > 0 {
-		value, unit := formatSize(bytes)
-		p.Summary += " · " + value + " " + unit + " on disk"
-	}
+	p.Summary = formatCount(len(snap.Series), "series", "series") + " · " + formatCount(nSeasons, "season", "seasons") + onDisk(bytes)
 	p.Controls = newListControls("/tv", v, "tv-expand-all")
 	// "Expand all" keeps the search, sort and layout; it is there even when
 	// the search matches nothing, so the swapped-in page head keeps its
