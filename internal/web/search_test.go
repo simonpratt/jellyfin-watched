@@ -147,12 +147,12 @@ func TestControlsSwapResultsWithHtmx(t *testing.T) {
 	h := newTestHandler(t, searchMovies)
 	body := get(t, h, "/movies").Body.String()
 	assertContains(t, body,
-		`hx-get="/movies" hx-trigger="submit, input delay:200ms from:#search-q" hx-target="#results" hx-select="#results" hx-swap="outerHTML" hx-select-oob="#page-summary,#sort-control,#layout-control" hx-sync="this:replace"`,
+		`hx-get="/movies" hx-trigger="submit, input delay:200ms from:#search-q" hx-target="#results" hx-select="#results" hx-swap="outerHTML" hx-select-oob="#page-summary,#sort-control" hx-sync="this:replace"`,
 		`<div id="results" class="results">`,
 		`<div id="sort-control" class="sort-control">`,
 	)
 	tv := get(t, h, "/tv").Body.String()
-	assertContains(t, tv, `hx-get="/tv"`, `hx-select-oob="#page-summary,#sort-control,#layout-control,#tv-expand-all"`)
+	assertContains(t, tv, `hx-get="/tv"`, `hx-select-oob="#page-summary,#sort-control,#tv-expand-all"`)
 
 	rec := htmxGet(t, h, "/movies?q=blade&sort=title&dir=asc&set-sort=size")
 	if rec.Code != http.StatusOK {
@@ -227,22 +227,21 @@ func TestEverySortLooksTheSame(t *testing.T) {
 				t.Errorf("%s: segment styled %q", sort, m[1])
 			}
 		}
-		sortControl := body[strings.Index(body, `<div id="sort-control"`):strings.Index(body, `<div id="layout-control"`)]
-		if n := strings.Count(sortControl, `aria-pressed="true"`); n != 1 {
+		if n := strings.Count(body, `aria-pressed="true"`); n != 1 {
 			t.Errorf("%s: %d segments selected", sort, n)
 		}
 	}
 }
 
-// The tabs carry the sort, direction and layout to the other tab, but not
-// the search or the TV page's expansion.
+// The tabs carry the sort and direction to the other tab, but not the
+// search or the TV page's expansion.
 func TestTabsCarrySortAndLayoutButNotSearch(t *testing.T) {
 	h := newTestHandler(t, searchMovies)
-	body := get(t, h, "/movies?q=blade&sort=size&dir=desc&layout=grid").Body.String()
+	body := get(t, h, "/movies?q=blade&sort=size&dir=desc").Body.String()
 	assertContains(t, body,
 		`<nav id="app-tabs" class="app-header__tabs" aria-label="Library">`,
-		`href="/movies?dir=desc&amp;layout=grid&amp;sort=size" aria-current="page">Movies`,
-		`href="/tv?dir=desc&amp;layout=grid&amp;sort=size">TV shows`)
+		`href="/movies?dir=desc&amp;sort=size" aria-current="page">Movies`,
+		`href="/tv?dir=desc&amp;sort=size">TV shows`)
 
 	tv := get(t, h, "/tv?q=simp&sort=year&seasons=all").Body.String()
 	assertContains(t, tv, `href="/movies?sort=year">Movies`, `href="/tv?sort=year" aria-current="page">TV shows`)

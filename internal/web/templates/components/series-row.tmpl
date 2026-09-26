@@ -1,11 +1,8 @@
 {{/* series-row: one series in the TV shows list. Takes a SeriesRow. Poster,
      title over year, season and episode counts and the disclosure, then the
      series total; its seasons, when shown, hang below on a rail. The
-     disclosure swaps in this same component from /tv/series/{id}. --card is
-     the poster grid's variant: the head stacked under a large poster; open
-     (--open), it spans the grid's width with its seasons as cards beside
-     it. */}}
-{{define "series-row"}}<li class="series-row{{if .Card}} series-row--card{{if .Seasons}} series-row--open{{end}}{{end}}" id="{{.ID}}">
+     disclosure swaps in this same component from /tv/series/{id}. */}}
+{{define "series-row"}}<li class="series-row" id="{{.ID}}">
 <div class="series-row__head">
 {{template "poster" .Poster}}
 <div class="series-row__main">

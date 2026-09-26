@@ -26,12 +26,12 @@ type Tab struct {
 }
 
 // newPage builds the layout's view model. current is "movies" or "tv". The
-// tabs carry v's sort, direction and layout to the other tab, but not its
-// search or the TV page's expansion.
-func newPage(title, current string, st library.Status, now time.Time, v viewState) Page {
-	carried := viewState{View: library.View{Sort: v.Sort, Desc: v.Desc}, Grid: v.Grid}
-	movies := Tab{Label: "Movies", Href: viewURL("/movies", carried), Current: current == "movies"}
-	tv := Tab{Label: "TV shows", Href: viewURL("/tv", carried), Current: current == "tv"}
+// tabs carry v's sort and direction to the other tab, but not its search or
+// the TV page's expansion.
+func newPage(title, current string, st library.Status, now time.Time, v library.View) Page {
+	carried := library.View{Sort: v.Sort, Desc: v.Desc}
+	movies := Tab{Label: "Movies", Href: viewURL("/movies", carried, ""), Current: current == "movies"}
+	tv := Tab{Label: "TV shows", Href: viewURL("/tv", carried, ""), Current: current == "tv"}
 	if st.Loaded {
 		movies.Count = formatNumber(len(st.Snapshot.Movies))
 		tv.Count = formatNumber(len(st.Snapshot.Series))
@@ -191,11 +191,10 @@ func matchSummary(matched, total int, singular, plural string) string {
 }
 
 // ListControls is the view model for the list-controls component: the
-// search box, sort control and layout control above a list, as one GET
-// form. With no JavaScript it submits normally; with htmx, typing
-// (debounced), a sort button or a layout button fetches the page and swaps
-// in the results and the parts of the page head that change (SelectOOB),
-// leaving the search box as it is.
+// search box and sort control above a list, as one GET form. With no
+// JavaScript it submits normally; with htmx, typing (debounced) or a sort
+// button fetches the page and swaps in the results and the parts of the page
+// head that change (SelectOOB), leaving the search box as it is.
 type ListControls struct {
 	ID        string // listControlsID
 	Action    string // the page's path, "/movies" or "/tv"
@@ -203,7 +202,6 @@ type ListControls struct {
 	Seasons   string // the TV page's ?seasons=, kept across searches
 	Search    Search
 	Sort      SortControl
-	Layout    LayoutControl
 }
 
 // Search is the view model for the search component: the box and, once
@@ -232,34 +230,6 @@ type SortOption struct {
 	Selected bool
 }
 
-// LayoutControl is the view model for the layout-control component: List
-// and Grid, as segments like the sort control's. Layout is the current
-// layout, carried as a hidden field; each segment submits set-layout, which
-// replaces it.
-type LayoutControl struct {
-	Layout  string // "list" or "grid"
-	Options []LayoutOption
-}
-
-// LayoutOption is one segment of the layout control.
-type LayoutOption struct {
-	ID       string // "layout-grid", stable across swaps so focus stays put
-	Label    string // "List", "Grid"
-	Value    string // "list", "grid"
-	Selected bool
-}
-
-func newLayoutControl(grid bool) LayoutControl {
-	c := LayoutControl{Layout: "list", Options: []LayoutOption{
-		{ID: "layout-list", Label: "List", Value: "list", Selected: !grid},
-		{ID: "layout-grid", Label: "Grid", Value: "grid", Selected: grid},
-	}}
-	if grid {
-		c.Layout = "grid"
-	}
-	return c
-}
-
 var sortLabels = map[library.SortKey]string{
 	library.SortTitle: "Title",
 	library.SortYear:  "Year",
@@ -267,32 +237,19 @@ var sortLabels = map[library.SortKey]string{
 	library.SortSize:  "Size",
 }
 
-// viewState is a list page's view as its URL carries it: the search and
-// sort, the layout, and on TV which series show their seasons ("all",
-// "none" or "", the default).
-type viewState struct {
-	library.View
-	Grid    bool // the poster grid rather than the list
-	Seasons string
-}
-
-// parseView reads a list's view from its query: q, sort, dir and layout,
-// then the form's buttons, set-sort, set-dir, set-layout and clear, which
-// override them. Seasons is left for the TV page to read.
-func parseView(q url.Values) viewState {
-	v := viewState{View: library.View{
+// parseView reads a list's view from its query: q, sort and dir, then the
+// form's buttons, set-sort, set-dir and clear, which override them.
+func parseView(q url.Values) library.View {
+	v := library.View{
 		Search: strings.TrimSpace(q.Get("q")),
 		Sort:   library.ParseSortKey(q.Get("sort")),
 		Desc:   q.Get("dir") == "desc",
-	}, Grid: q.Get("layout") == "grid"}
+	}
 	if s := q.Get("set-sort"); s != "" {
 		v.Sort = library.ParseSortKey(s)
 	}
 	if d := q.Get("set-dir"); d != "" {
 		v.Desc = d == "desc"
-	}
-	if l := q.Get("set-layout"); l != "" {
-		v.Grid = l == "grid"
 	}
 	if q.Get("clear") != "" {
 		v.Search = ""
@@ -301,9 +258,8 @@ func parseView(q url.Values) viewState {
 }
 
 // viewQuery is the tidy query for a view: only what differs from the
-// default (title, ascending, no search, the list), plus the TV page's
-// seasons.
-func viewQuery(v viewState) url.Values {
+// default (title, ascending, no search), plus the TV page's seasons.
+func viewQuery(v library.View, seasons string) url.Values {
 	q := url.Values{}
 	if v.Search != "" {
 		q.Set("q", v.Search)
@@ -314,32 +270,28 @@ func viewQuery(v viewState) url.Values {
 	if v.Desc {
 		q.Set("dir", "desc")
 	}
-	if v.Grid {
-		q.Set("layout", "grid")
-	}
-	if v.Seasons != "" {
-		q.Set("seasons", v.Seasons)
+	if seasons != "" {
+		q.Set("seasons", seasons)
 	}
 	return q
 }
 
 // viewURL is path with the view's tidy query.
-func viewURL(path string, v viewState) string {
-	if q := viewQuery(v).Encode(); q != "" {
+func viewURL(path string, v library.View, seasons string) string {
+	if q := viewQuery(v, seasons).Encode(); q != "" {
 		return path + "?" + q
 	}
 	return path
 }
 
-func newListControls(action string, v viewState, selectOOB ...string) *ListControls {
+func newListControls(action string, v library.View, seasons string, selectOOB ...string) *ListControls {
 	c := &ListControls{
 		ID:        listControlsID,
 		Action:    action,
-		SelectOOB: "#page-summary,#sort-control,#layout-control",
-		Seasons:   v.Seasons,
+		SelectOOB: "#page-summary,#sort-control",
+		Seasons:   seasons,
 		Search:    Search{ID: "search-q", Value: v.Search},
 		Sort:      SortControl{Sort: string(v.Sort), Dir: "asc"},
-		Layout:    newLayoutControl(v.Grid),
 	}
 	for _, id := range selectOOB {
 		c.SelectOOB += ",#" + id
@@ -360,12 +312,10 @@ func newListControls(action string, v viewState, selectOOB ...string) *ListContr
 	return c
 }
 
-// MoviesPage is the view model for pages/movies.tmpl. Grid shows the movies
-// as a poster grid of cards rather than a list of rows.
+// MoviesPage is the view model for pages/movies.tmpl.
 type MoviesPage struct {
 	Page
 	Loaded   bool
-	Grid     bool
 	Summary  string        // e.g. "1,284 movies", or "3 of 1,284 movies match"
 	Controls *ListControls // search and sort; nil with no movies
 	Notice   *Notice       // a failed refresh; nil normally
@@ -373,12 +323,10 @@ type MoviesPage struct {
 	Movies   []MovieRow
 }
 
-// TVPage is the view model for pages/tv.tmpl. Grid shows the series as a
-// poster grid of cards rather than a list of rows.
+// TVPage is the view model for pages/tv.tmpl.
 type TVPage struct {
 	Page
 	Loaded    bool
-	Grid      bool
 	Summary   string        // e.g. "212 series · 1,406 seasons · 9.7 TB on disk"
 	Controls  *ListControls // search and sort; nil with no series
 	Notice    *Notice       // a failed refresh; nil normally
@@ -389,48 +337,25 @@ type TVPage struct {
 
 // Poster is the view model for the poster component: an image when Src is
 // set, the missing-poster box when Missing, otherwise the generated
-// placeholder showing Initial. Large is the poster grid's variant, which
-// fills its card's width at 2:3 rather than the list's fixed 48×72 slot.
+// placeholder showing Initial.
 type Poster struct {
 	Title   string // the image's alt text
 	Src     string // the dashboard's poster URL, e.g. "/posters/{id}/{tag}"
 	Missing bool   // Jellyfin has no poster for the item
 	Initial string // placeholder only; may be empty, leaving a plain block
-	Large   bool
 }
 
 // posterPath is where the dashboard serves posters.
 const posterPath = "/posters/"
 
-// posterSize is the image a poster slot is served, in pixels: twice the
-// slot's CSS size, for high-density screens. The list's 48×72 slot has the
-// plain URL; the grid's card, which is at least 160 CSS pixels wide, has
-// ?size=grid. No other size can be asked for.
-type posterSize struct{ width, height int }
-
-var (
-	posterSizeList = posterSize{96, 144}
-	posterSizeGrid = posterSize{320, 480}
-)
-
-// posterSizes are the sizes by their ?size= value.
-var posterSizes = map[string]posterSize{"": posterSizeList, "grid": posterSizeGrid}
-
-// newPoster builds an item's poster, for the grid when large. tag is its
-// Jellyfin poster tag, "" when it has none. The URL points at the
-// dashboard, never at Jellyfin, and includes the tag so that a changed
-// poster gets a new URL.
-func newPoster(id, title, tag string, large bool) Poster {
-	p := Poster{Title: title, Large: large}
+// newPoster builds an item's poster. tag is its Jellyfin poster tag, "" when
+// it has none. The URL points at the dashboard, never at Jellyfin, and
+// includes the tag so that a changed poster gets a new URL.
+func newPoster(id, title, tag string) Poster {
 	if tag == "" {
-		p.Missing = true
-		return p
+		return Poster{Title: title, Missing: true}
 	}
-	p.Src = posterPath + url.PathEscape(id) + "/" + url.PathEscape(tag)
-	if large {
-		p.Src += "?size=grid"
-	}
-	return p
+	return Poster{Title: title, Src: posterPath + url.PathEscape(id) + "/" + url.PathEscape(tag)}
 }
 
 // Button is the view model for the button component. The zero value of every
@@ -565,10 +490,8 @@ func newCompletion(completed []library.User, inProgress []library.Progress, tags
 	return c
 }
 
-// MovieRow is the view model for the movie-row component. Card is the poster
-// grid's variant: the same facts, stacked under a large poster.
+// MovieRow is the view model for the movie-row component.
 type MovieRow struct {
-	Card       bool
 	Title      string
 	Year       string // empty when unknown
 	Added      string // e.g. "Added 14 Feb 2024"; empty when unknown
@@ -577,20 +500,19 @@ type MovieRow struct {
 	Completion Completion
 }
 
-func newMovieRow(m library.Movie, tags map[string]UserTag, totalUsers int, card bool) MovieRow {
+func newMovieRow(m library.Movie, tags map[string]UserTag, totalUsers int) MovieRow {
 	return MovieRow{
-		Card:       card,
 		Title:      m.Title,
 		Year:       formatYear(m.Year),
 		Added:      formatAdded(m.Added),
-		Poster:     newPoster(m.ID, m.Title, m.PosterTag, card),
+		Poster:     newPoster(m.ID, m.Title, m.PosterTag),
 		Size:       newSize(m.Size),
 		Completion: newCompletion(m.CompletedBy, nil, tags, totalUsers),
 	}
 }
 
-func newMoviesPage(st library.Status, now time.Time, v viewState) MoviesPage {
-	p := MoviesPage{Page: newPage("Movies", "movies", st, now, v), Loaded: st.Loaded, Grid: v.Grid,
+func newMoviesPage(st library.Status, now time.Time, v library.View) MoviesPage {
+	p := MoviesPage{Page: newPage("Movies", "movies", st, now, v), Loaded: st.Loaded,
 		Notice: newNotice(st, now), Empty: firstLoad(st)}
 	if !st.Loaded {
 		return p
@@ -606,9 +528,8 @@ func newMoviesPage(st library.Status, now time.Time, v viewState) MoviesPage {
 		p.Empty = emptyLibrary(st, now, "movies", "movies", "Movies")
 		return p
 	}
-	v.Seasons = ""
-	p.Controls = newListControls("/movies", v)
-	movies := library.ArrangeMovies(snap.Movies, v.View)
+	p.Controls = newListControls("/movies", v, "")
+	movies := library.ArrangeMovies(snap.Movies, v)
 	if v.Search != "" {
 		p.Summary = matchSummary(len(movies), len(snap.Movies), "movie", "movies")
 		if len(movies) == 0 {
@@ -618,7 +539,7 @@ func newMoviesPage(st library.Status, now time.Time, v viewState) MoviesPage {
 	tags := newUserTags(snap.Users)
 	p.Movies = make([]MovieRow, 0, len(movies))
 	for _, m := range movies {
-		p.Movies = append(p.Movies, newMovieRow(m, tags, len(snap.Users), v.Grid))
+		p.Movies = append(p.Movies, newMovieRow(m, tags, len(snap.Users)))
 	}
 	return p
 }
@@ -634,11 +555,8 @@ func newSumSize(bytes int64, unknown int) Size {
 	return Size{Value: v, Unit: u, UnknownCount: unknown}
 }
 
-// SeriesRow is the view model for the series-row component. Card is the
-// poster grid's variant: the same facts under a large poster, with its
-// seasons, when shown, as cards across the grid's full width.
+// SeriesRow is the view model for the series-row component.
 type SeriesRow struct {
-	Card   bool
 	ID     string // the element ID, "series-{id}"
 	Title  string
 	Year   string // empty when unknown
@@ -652,12 +570,8 @@ type SeriesRow struct {
 	SeasonsID string // the season list's element ID
 }
 
-// SeasonRow is the view model for the season-row component. Card is the
-// poster grid's variant, which shows the season's Poster; the list's rows
-// have none.
+// SeasonRow is the view model for the season-row component.
 type SeasonRow struct {
-	Card       bool
-	Poster     *Poster
 	Name       string // "Season 2"
 	Episodes   string // "12 episodes"
 	Size       Size
@@ -665,10 +579,9 @@ type SeasonRow struct {
 }
 
 // expandedByDefault is how many seasons a series can have and still show
-// them when the list loads. Longer-running series start collapsed behind
+// them when the page loads. Longer-running series start collapsed behind
 // "Show 35 seasons" (TV shows screen: The Simpsons). DESIGN.md §7 gives 1–5
-// seasons as typical. In the grid every series starts collapsed, since an
-// open one takes a whole row.
+// seasons as typical.
 const expandedByDefault = 5
 
 // expansion is which series show their seasons, set by /tv?seasons= and a
@@ -695,50 +608,35 @@ func parseExpansion(v string) expansion {
 // seriesPath is where a series row is served as an htmx fragment.
 const seriesPath = "/tv/series/"
 
-func newSeriesRow(sr library.Series, tags map[string]UserTag, totalUsers int, exp expansion, card bool) SeriesRow {
+func newSeriesRow(sr library.Series, tags map[string]UserTag, totalUsers int, exp expansion) SeriesRow {
 	episodes := 0
 	for _, s := range sr.Seasons {
 		episodes += s.Episodes
 	}
 	row := SeriesRow{
-		Card:      card,
 		ID:        "series-" + sr.ID,
 		Title:     sr.Title,
 		Year:      formatYear(sr.Year),
 		Counts:    formatCount(len(sr.Seasons), "season", "seasons") + " · " + formatCount(episodes, "episode", "episodes"),
-		Poster:    newPoster(sr.ID, sr.Title, sr.PosterTag, card),
+		Poster:    newPoster(sr.ID, sr.Title, sr.PosterTag),
 		Size:      newSumSize(sr.Size, sr.UnknownSizes),
 		SeasonsID: "series-" + sr.ID + "-seasons",
 	}
 	if len(sr.Seasons) == 0 {
 		return row
 	}
-	expanded := exp == expandAll || (exp == expandDefault && !card && len(sr.Seasons) <= expandedByDefault)
+	expanded := exp == expandAll || (exp == expandDefault && len(sr.Seasons) <= expandedByDefault)
 	toggle := &Button{
 		Disclosure: true,
 		ID:         row.ID + "-toggle",
 		Target:     "closest .series-row",
 		Swap:       "outerHTML",
 	}
-	// The fragment keeps the layout, so the row comes back as a card.
-	href := func(seasons string) string {
-		q := url.Values{"seasons": {seasons}}
-		if card {
-			q.Set("layout", "grid")
-		}
-		return seriesPath + url.PathEscape(sr.ID) + "?" + q.Encode()
-	}
+	href := seriesPath + url.PathEscape(sr.ID) + "?seasons="
 	if expanded {
-		toggle.Label, toggle.Expanded, toggle.Controls, toggle.Get = "Hide seasons", "true", row.SeasonsID, href("hide")
+		toggle.Label, toggle.Expanded, toggle.Controls, toggle.Get = "Hide seasons", "true", row.SeasonsID, href+"hide"
 		for _, s := range sr.Seasons {
-			var poster *Poster
-			if card {
-				p := newPoster(s.PosterID, sr.Title+", "+s.Name, s.PosterTag, true)
-				poster = &p
-			}
 			row.Seasons = append(row.Seasons, SeasonRow{
-				Card:       card,
-				Poster:     poster,
 				Name:       s.Name,
 				Episodes:   formatCount(s.Episodes, "episode", "episodes"),
 				Size:       newSumSize(s.Size, s.UnknownSizes),
@@ -746,7 +644,7 @@ func newSeriesRow(sr library.Series, tags map[string]UserTag, totalUsers int, ex
 			})
 		}
 	} else {
-		toggle.Label, toggle.Expanded, toggle.Get = "Show "+formatCount(len(sr.Seasons), "season", "seasons"), "false", href("show")
+		toggle.Label, toggle.Expanded, toggle.Get = "Show "+formatCount(len(sr.Seasons), "season", "seasons"), "false", href+"show"
 	}
 	row.Toggle = toggle
 	return row
@@ -762,11 +660,11 @@ func onDisk(bytes int64) string {
 	return " · " + value + " " + unit + " on disk"
 }
 
-// newTVPage builds the TV shows page. v.Seasons is the page's ?seasons=
+// newTVPage builds the TV shows page. seasons is the page's ?seasons=
 // ("all", "none" or ""), from which exp comes.
-func newTVPage(st library.Status, now time.Time, v viewState) TVPage {
-	exp := parseExpansion(v.Seasons)
-	p := TVPage{Page: newPage("TV shows", "tv", st, now, v), Loaded: st.Loaded, Grid: v.Grid,
+func newTVPage(st library.Status, now time.Time, v library.View, seasons string) TVPage {
+	exp := parseExpansion(seasons)
+	p := TVPage{Page: newPage("TV shows", "tv", st, now, v), Loaded: st.Loaded,
 		Notice: newNotice(st, now), Empty: firstLoad(st)}
 	if !st.Loaded {
 		return p
@@ -784,19 +682,16 @@ func newTVPage(st library.Status, now time.Time, v viewState) TVPage {
 		bytes += sr.Size
 	}
 	p.Summary = formatCount(len(snap.Series), "series", "series") + " · " + formatCount(nSeasons, "season", "seasons") + onDisk(bytes)
-	p.Controls = newListControls("/tv", v, "tv-expand-all")
-	// "Expand all" keeps the search, sort and layout; it is there even when
-	// the search matches nothing, so the swapped-in page head keeps its
-	// place.
-	all, none := v, v
-	all.Seasons, none.Seasons = "all", "none"
+	p.Controls = newListControls("/tv", v, seasons, "tv-expand-all")
+	// "Expand all" keeps the search and sort; it is there even when the
+	// search matches nothing, so the swapped-in page head keeps its place.
 	p.ExpandAll = &Button{Label: "Expand all", Icon: "expand-all", ID: "tv-expand-all",
-		Get: viewURL("/tv", all), Target: "main", Swap: "innerHTML", PushURL: true}
+		Get: viewURL("/tv", v, "all"), Target: "main", Swap: "innerHTML", PushURL: true}
 	if exp == expandAll {
-		p.ExpandAll.Label, p.ExpandAll.Icon, p.ExpandAll.Get = "Collapse all", "collapse-all", viewURL("/tv", none)
+		p.ExpandAll.Label, p.ExpandAll.Icon, p.ExpandAll.Get = "Collapse all", "collapse-all", viewURL("/tv", v, "none")
 	}
 
-	series := library.ArrangeSeries(snap.Series, v.View)
+	series := library.ArrangeSeries(snap.Series, v)
 	if v.Search != "" {
 		p.Summary = matchSummary(len(series), len(snap.Series), "series", "series")
 		if len(series) == 0 {
@@ -806,7 +701,7 @@ func newTVPage(st library.Status, now time.Time, v viewState) TVPage {
 	tags := newUserTags(snap.Users)
 	p.Series = make([]SeriesRow, 0, len(series))
 	for _, sr := range series {
-		p.Series = append(p.Series, newSeriesRow(sr, tags, len(snap.Users), exp, v.Grid))
+		p.Series = append(p.Series, newSeriesRow(sr, tags, len(snap.Users), exp))
 	}
 	return p
 }

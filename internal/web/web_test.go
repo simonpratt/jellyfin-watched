@@ -3,7 +3,6 @@ package web
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -38,14 +37,14 @@ func (s stubSnapshots) RefreshNow() bool { return false }
 // stubPosters serves a fixed image for every poster and records requests.
 type stubPosters struct {
 	mu    sync.Mutex
-	calls []string // "id/tag WxH"
+	calls []string // "id/tag"
 	err   error
 }
 
-func (p *stubPosters) Poster(_ context.Context, id, tag string, width, height int) ([]byte, string, error) {
+func (p *stubPosters) Poster(_ context.Context, id, tag string) ([]byte, string, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.calls = append(p.calls, fmt.Sprintf("%s/%s %dx%d", id, tag, width, height))
+	p.calls = append(p.calls, id+"/"+tag)
 	if p.err != nil {
 		return nil, "", p.err
 	}
@@ -385,7 +384,7 @@ func TestPosterRouteServesCachedImage(t *testing.T) {
 	if !reflect.DeepEqual(rec.Header(), want) {
 		t.Errorf("headers = %v, want %v", rec.Header(), want)
 	}
-	if !reflect.DeepEqual(p.calls, []string{"a1/t1 96x144"}) {
+	if !reflect.DeepEqual(p.calls, []string{"a1/t1"}) {
 		t.Errorf("Poster calls = %v", p.calls)
 	}
 }
@@ -398,7 +397,7 @@ func TestPosterRouteStaleTagServesCurrentPoster(t *testing.T) {
 	if rec.Code != http.StatusOK || rec.Header().Get("Cache-Control") != "no-cache" {
 		t.Errorf("status %d Cache-Control %q", rec.Code, rec.Header().Get("Cache-Control"))
 	}
-	if !reflect.DeepEqual(p.calls, []string{"a1/t1 96x144"}) {
+	if !reflect.DeepEqual(p.calls, []string{"a1/t1"}) {
 		t.Errorf("Poster calls = %v", p.calls)
 	}
 }

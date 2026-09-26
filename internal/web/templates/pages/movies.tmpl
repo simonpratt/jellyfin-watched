@@ -12,8 +12,8 @@
 <div id="results" class="results">
 {{if .Empty}}{{template "empty-state" .Empty}}
 {{else if .Movies}}
-{{if not .Grid}}<div class="list-head" aria-hidden="true"><span class="list-head__title">Title</span><span class="list-head__size">Size</span><span class="list-head__completion">Completed by</span></div>{{end}}
-<ul class="movie-list{{if .Grid}} movie-list--grid{{end}}">
+<div class="list-head" aria-hidden="true"><span class="list-head__title">Title</span><span class="list-head__size">Size</span><span class="list-head__completion">Completed by</span></div>
+<ul class="movie-list">
 {{range .Movies}}{{template "movie-row" .}}{{end}}
 </ul>
 {{end}}

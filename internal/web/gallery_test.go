@@ -36,7 +36,6 @@ const galleryTmpl = `{{define "gallery"}}<!doctype html>
 .gallery__refresh { position: relative; overflow-x: clip; padding-bottom: var(--space-2); }
 .gallery__tools { justify-content: flex-start; }
 .gallery__password { justify-items: stretch; grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(9 * var(--space-10))), 1fr)); gap: var(--space-10); align-items: start; }
-.gallery__flush { padding-inline: 0; }
 .gallery__panel { border: 1px solid var(--line); border-radius: var(--radius-lg); margin-bottom: var(--space-4); }
 </style>
 </head>
@@ -60,9 +59,6 @@ const galleryTmpl = `{{define "gallery"}}<!doctype html>
 <section><h2 class="gallery__label">Movie row</h2><ul class="movie-list">{{range .Rows}}{{template "movie-row" .}}{{end}}</ul></section>
 <section><h2 class="gallery__label">Password form · empty, wrong password, too many attempts</h2><div class="gallery__stack gallery__password">{{range .PasswordForms}}{{template "password-form" .}}{{end}}</div></section>
 <section><h2 class="gallery__label">Series row · expanded, all 10 users, collapsed with 35 seasons, unknown sizes and nobody, missing poster with no seasons</h2><ul class="series-list">{{range .SeriesRows}}{{template "series-row" .}}{{end}}</ul></section>
-<section><h2 class="gallery__label">Layout control · list, grid</h2><div class="gallery__stack">{{range .Layouts}}<form>{{template "layout-control" .}}</form>{{end}}</div></section>
-<section><h2 class="gallery__label">Movie row · card, in the poster grid (image, missing poster, image still loading or failed)</h2><ul class="movie-list movie-list--grid gallery__flush">{{range .MovieCards}}{{template "movie-row" .}}{{end}}</ul></section>
-<section><h2 class="gallery__label">Series row · card, in the poster grid: closed, open (season cards: own poster, series poster, missing), no seasons</h2><ul class="series-list series-list--grid gallery__flush">{{range .SeriesCards}}{{template "series-row" .}}{{end}}</ul></section>
 </div>
 </body>
 </html>
@@ -84,9 +80,6 @@ type gallery struct {
 	ProgressTags           []UserTag
 	Completions            []Completion
 	SeriesRows             []SeriesRow
-	Layouts                []LayoutControl
-	MovieCards             []MovieRow
-	SeriesCards            []SeriesRow
 	Searches               []Search
 	Sorts                  []SortControl
 	Controls               *ListControls
@@ -126,9 +119,9 @@ func TestGallery(t *testing.T) {
 		{Title: "Супер фильм", Year: 2020, Added: added, Size: 44 * gib / 10, CompletedBy: []library.User{ten[3]}},
 	}
 	g := gallery{
-		HeaderMovies:     newPage("Movies", "movies", galleryStatus(12*time.Minute, false, false), galleryNow, viewState{}),
-		HeaderTV:         newPage("TV shows", "tv", library.Status{Refreshing: true}, galleryNow, viewState{}),
-		HeaderRefreshing: newPage("Movies", "movies", galleryStatus(12*time.Minute, true, false), galleryNow, viewState{}),
+		HeaderMovies:     newPage("Movies", "movies", galleryStatus(12*time.Minute, false, false), galleryNow, library.View{}),
+		HeaderTV:         newPage("TV shows", "tv", library.Status{Refreshing: true}, galleryNow, library.View{}),
+		HeaderRefreshing: newPage("Movies", "movies", galleryStatus(12*time.Minute, true, false), galleryNow, library.View{}),
 		Refresh: []RefreshControl{
 			newRefreshControl(galleryStatus(12*time.Minute, false, false), galleryNow),
 			newRefreshControl(galleryStatus(12*time.Minute, true, false), galleryNow),
@@ -159,7 +152,7 @@ func TestGallery(t *testing.T) {
 		if i != missing {
 			m.PosterTag = "t"
 		}
-		row := newMovieRow(m, tags, len(ten), false)
+		row := newMovieRow(m, tags, len(ten))
 		if !strings.HasPrefix(row.Poster.Src, "/posters/"+m.ID+"/t") && i != missing {
 			t.Errorf("%s: poster Src = %q", m.Title, row.Poster.Src)
 		}
@@ -225,7 +218,7 @@ func TestGallery(t *testing.T) {
 		{ID: "none", Title: "Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb", Year: 1964},
 	}
 	for i, sr := range series {
-		row := newSeriesRow(sr, tags, len(ten), expandDefault, false)
+		row := newSeriesRow(sr, tags, len(ten), expandDefault)
 		if row.Poster.Src != "" {
 			name := "s" + strconv.Itoa(i) + ".png"
 			writeStandInPoster(t, filepath.Join(posterDir, name), i+3)
@@ -234,59 +227,13 @@ func TestGallery(t *testing.T) {
 		g.SeriesRows = append(g.SeriesRows, row)
 	}
 
-	// The poster grid: every movie as a card; one that never loads.
-	for i, m := range movies {
-		m.ID = "m" + strconv.Itoa(i)
-		if i != missing {
-			m.PosterTag = "t"
-		}
-		card := newMovieRow(m, tags, len(ten), true)
-		if !card.Card || !card.Poster.Large || (i != missing && card.Poster.Src != "/posters/"+m.ID+"/t?size=grid") {
-			t.Errorf("%s: card %+v", m.Title, card.Poster)
-		}
-		if card.Poster.Src != "" {
-			card.Poster.Src = g.Rows[i].Poster.Src
-		}
-		g.MovieCards = append(g.MovieCards, card)
-	}
-	g.MovieCards[len(g.MovieCards)-1].Poster.Src = "gallery-posters/does-not-exist.png"
-	g.Layouts = []LayoutControl{newLayoutControl(false), newLayoutControl(true)}
-
-	// Series cards: Hunter × Hunter open, with its season on its own
-	// poster; Twin Peaks open, one season on the series poster and one
-	// with none; the rest closed.
-	series[0].Seasons[0].PosterID, series[0].Seasons[0].PosterTag = "hxh1", "t"
-	series[3].Seasons[0].PosterID, series[3].Seasons[0].PosterTag = "twin", "t"
-	series[3].Seasons[1].PosterID, series[3].Seasons[1].PosterTag = "twin", "t"
-	for i, sr := range series {
-		exp := expandDefault
-		if i == 0 || i == 3 {
-			exp = expandAll
-		}
-		card := newSeriesRow(sr, tags, len(ten), exp, true)
-		if card.Poster.Src != "" {
-			card.Poster.Src = g.SeriesRows[i].Poster.Src
-		}
-		for j, season := range card.Seasons {
-			switch {
-			case season.Poster.Src == "/posters/hxh1/t?size=grid":
-				name := "hxh1.png"
-				writeStandInPoster(t, filepath.Join(posterDir, name), 9)
-				card.Seasons[j].Poster.Src = "gallery-posters/" + name
-			case season.Poster.Src != "":
-				card.Seasons[j].Poster.Src = card.Poster.Src
-			}
-		}
-		g.SeriesCards = append(g.SeriesCards, card)
-	}
-
-	blade := viewState{View: library.View{Search: "blade"}}
-	sizeDesc := viewState{View: library.View{Sort: library.SortSize, Desc: true}}
-	g.Searches = []Search{newListControls("/movies", viewState{}).Search, newListControls("/movies", blade).Search}
-	g.Sorts = []SortControl{newListControls("/movies", viewState{}).Sort, newListControls("/movies", sizeDesc).Sort}
+	blade := library.View{Search: "blade"}
+	sizeDesc := library.View{Sort: library.SortSize, Desc: true}
+	g.Searches = []Search{newListControls("/movies", library.View{}, "").Search, newListControls("/movies", blade, "").Search}
+	g.Sorts = []SortControl{newListControls("/movies", library.View{}, "").Sort, newListControls("/movies", sizeDesc, "").Sort}
 	// The gallery has one list-controls form, so the others' IDs aren't
 	// repeated in it.
-	g.Controls = newListControls("/tv", viewState{View: library.View{Search: "hunter", Sort: library.SortYear}})
+	g.Controls = newListControls("/tv", library.View{Search: "hunter", Sort: library.SortYear}, "")
 	g.ExpandAll = Button{Label: "Expand all", Icon: "expand-all"}
 
 	for _, msg := range []string{"", wrongPassword, tooManyPassword} {
@@ -322,9 +269,7 @@ func TestGallery(t *testing.T) {
 		`<span class="series-row__counts">0 seasons · 0 episodes</span>`, "No movies match “Dr. Strangelove or: How I Learned”",
 		"Clear search</button>", `placeholder="Search titles"`, `value="blade"`, "Date added</button>", "Descending</button>", "Ascending</button>",
 		`aria-pressed="true">Size</button>`, `aria-pressed="true">Year</button>`,
-		"That password is not correct. Check it and try again.", "Too many wrong passwords.", "Open dashboard</button>",
-		`class="movie-row movie-row--card"`, `class="poster poster--large poster--missing"`, `class="series-row series-row--card series-row--open"`,
-		`class="season-row season-row--card"`, `alt="Hunter × Hunter, Season 1"`, `aria-pressed="true">` + gridIconPrefix} {
+		"That password is not correct. Check it and try again.", "Too many wrong passwords.", "Open dashboard</button>"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("gallery missing %q", want)
 		}

@@ -332,7 +332,7 @@ func TestPrimaryImageFetchesSizedPosterWithGET(t *testing.T) {
 		w.Header().Set("Content-Disposition", "attachment")
 		_, _ = w.Write(jpeg)
 	})
-	img, err := c.PrimaryImage(context.Background(), "abc123", 96, 144)
+	img, err := c.PrimaryImage(context.Background(), "abc123")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,17 +346,10 @@ func TestPrimaryImageFetchesSizedPosterWithGET(t *testing.T) {
 	if strings.Contains(r.URL.String(), testKey) {
 		t.Errorf("API key sent in URL: %s", r.URL)
 	}
-	// The size the caller asked for.
+	// Twice the 48×72 slot, for high-density screens.
 	q := r.URL.Query()
 	if q.Get("fillWidth") != "96" || q.Get("fillHeight") != "144" {
 		t.Errorf("query = %s", r.URL.RawQuery)
-	}
-
-	if _, err := c.PrimaryImage(context.Background(), "abc123", 320, 480); err != nil {
-		t.Fatal(err)
-	}
-	if q := (*reqs)[1].URL.Query(); q.Get("fillWidth") != "320" || q.Get("fillHeight") != "480" {
-		t.Errorf("query = %s", (*reqs)[1].URL.RawQuery)
 	}
 }
 
@@ -369,7 +362,7 @@ func TestPrimaryImageErrors(t *testing.T) {
 		},
 	} {
 		c, _ := posterServer(t, h)
-		_, err := c.PrimaryImage(context.Background(), "abc", 96, 144)
+		_, err := c.PrimaryImage(context.Background(), "abc")
 		if err == nil {
 			t.Errorf("%s: want error", name)
 			continue
@@ -380,7 +373,7 @@ func TestPrimaryImageErrors(t *testing.T) {
 	}
 	// IDs are escaped, so an ID can't reach another endpoint.
 	c, reqs := posterServer(t, func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
-	_, _ = c.PrimaryImage(context.Background(), "../../Users", 96, 144)
+	_, _ = c.PrimaryImage(context.Background(), "../../Users")
 	if got := (*reqs)[0].URL.EscapedPath(); got != "/Items/..%2F..%2FUsers/Images/Primary" {
 		t.Errorf("path = %s", got)
 	}

@@ -1,11 +1,9 @@
 {{/* user-tag: a user's name with their two-letter code on their hue. Takes a
      UserTag. The code, not the colour, tells users apart; screen readers get
      the name only. An in-progress tag (--progress) adds "x / y" in mono and
-     a thin bar, kept together (__progress) so that in a narrow place (a
-     season card) they go under the name rather than squeezing it; screen
-     readers hear "9 of 12 episodes played" instead. */}}
+     a thin bar; screen readers hear "9 of 12 episodes played" instead. */}}
 {{define "user-tag"}}<span class="user-tag{{if .Available}} user-tag--progress{{end}}">{{template "user-code" .}}<span class="user-tag__name">{{.Name}}</span>
-{{- if .Available}}<span class="user-tag__progress"><span class="user-tag__count" aria-hidden="true">{{.Played}} / {{.Available}}</span><span class="user-tag__sr">{{.Played}} of {{.Available}} episodes played</span><span class="user-tag__bar" aria-hidden="true"><span class="user-tag__fill" style="width: {{.Percent}}%"></span></span></span>{{end}}</span>{{end}}
+{{- if .Available}}<span class="user-tag__count" aria-hidden="true">{{.Played}} / {{.Available}}</span><span class="user-tag__sr">{{.Played}} of {{.Available}} episodes played</span><span class="user-tag__bar" aria-hidden="true"><span class="user-tag__fill" style="width: {{.Percent}}%"></span></span>{{end}}</span>{{end}}
 
 {{/* user-code: the code square on its own, as used in a user-group's stack.
      Takes a UserTag. */}}
