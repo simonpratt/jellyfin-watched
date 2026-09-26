@@ -31,12 +31,20 @@ const galleryTmpl = `{{define "gallery"}}<!doctype html>
 .gallery__row { display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: center; }
 .gallery__sizes { display: grid; gap: var(--space-3); width: calc(2 * var(--space-12)); text-align: right; }
 .gallery__stack { display: grid; gap: var(--space-4); justify-items: start; }
+.gallery__wide { justify-items: stretch; }
+.gallery__wide .notice { margin: 0; }
+.gallery__refresh { position: relative; overflow-x: clip; padding-bottom: var(--space-2); }
+.gallery__panel { border: 1px solid var(--line); border-radius: var(--radius-lg); margin-bottom: var(--space-4); }
 </style>
 </head>
 <body>
 <div class="gallery">
 <section><h2 class="gallery__label">Header · movies current</h2>{{template "app-header" .HeaderMovies}}</section>
-<section><h2 class="gallery__label">Header · TV shows current, before first load</h2>{{template "app-header" .HeaderTV}}</section>
+<section><h2 class="gallery__label">Header · TV shows current, before first load (hairline, no control)</h2>{{template "app-header" .HeaderTV}}</section>
+<section><h2 class="gallery__label">Header · refreshing</h2>{{template "app-header" .HeaderRefreshing}}</section>
+<section><h2 class="gallery__label">Refresh control · idle, refreshing, stale (3 hours), failed first load</h2><div class="gallery__stack">{{range .Refresh}}<div class="gallery__refresh">{{template "refresh-control" .}}</div>{{end}}</div></section>
+<section><h2 class="gallery__label">Notice · stale data, failed first load</h2><div class="gallery__stack gallery__wide">{{range .Notices}}{{template "notice" .}}{{end}}</div></section>
+<section><h2 class="gallery__label">Empty state · first load, empty movies, empty TV shows</h2>{{range .Empties}}<div class="gallery__panel">{{template "empty-state" .}}</div>{{end}}</section>
 <section><h2 class="gallery__label">Poster · image, image that failed or is still loading, missing, generated placeholder</h2><div class="gallery__row">{{range .Posters}}{{template "poster" .}}{{end}}</div></section>
 <section><h2 class="gallery__label">Button · default, primary, disclosure collapsed and expanded, expand all, collapse all</h2><div class="gallery__row">{{range .Buttons}}{{template "button" .}}{{end}}</div></section>
 <section><h2 class="gallery__label">User tag · all 10 users, then user 11 wrapping to hue 1</h2><div class="gallery__row">{{range .Tags}}{{template "user-tag" .}}{{end}}</div></section>
@@ -53,6 +61,10 @@ const galleryTmpl = `{{define "gallery"}}<!doctype html>
 
 type gallery struct {
 	HeaderMovies, HeaderTV Page
+	HeaderRefreshing       Page
+	Refresh                []RefreshControl
+	Notices                []*Notice
+	Empties                []*EmptyState
 	Posters                []Poster
 	Buttons                []Button
 	Rows                   []MovieRow
@@ -97,9 +109,25 @@ func TestGallery(t *testing.T) {
 		{Title: "Супер фильм", Year: 2020, Added: added, Size: 44 * gib / 10, CompletedBy: []library.User{ten[3]}},
 	}
 	g := gallery{
-		HeaderMovies: newPage("Movies", "movies", library.Snapshot{Movies: make([]library.Movie, 1284)}, true),
-		HeaderTV:     newPage("TV shows", "tv", library.Snapshot{}, false),
-		Buttons:      []Button{{Label: "Clear search"}, {Label: "Open dashboard", Primary: true}},
+		HeaderMovies:     newPage("Movies", "movies", galleryStatus(12*time.Minute, false, false), galleryNow),
+		HeaderTV:         newPage("TV shows", "tv", library.Status{Refreshing: true}, galleryNow),
+		HeaderRefreshing: newPage("Movies", "movies", galleryStatus(12*time.Minute, true, false), galleryNow),
+		Refresh: []RefreshControl{
+			newRefreshControl(galleryStatus(12*time.Minute, false, false), galleryNow),
+			newRefreshControl(galleryStatus(12*time.Minute, true, false), galleryNow),
+			newRefreshControl(galleryStatus(3*time.Hour, false, true), galleryNow),
+			newRefreshControl(library.Status{Failed: true}, galleryNow),
+		},
+		Notices: []*Notice{
+			newNotice(galleryStatus(3*time.Hour, false, true), galleryNow),
+			newNotice(library.Status{Failed: true}, galleryNow),
+		},
+		Empties: []*EmptyState{
+			firstLoad(library.Status{}),
+			emptyLibrary(galleryStatus(12*time.Minute, false, false), galleryNow, "movies", "movies", "Movies"),
+			emptyLibrary(galleryStatus(12*time.Minute, false, false), galleryNow, "TV shows", "series", "Shows"),
+		},
+		Buttons: []Button{{Label: "Clear search"}, {Label: "Open dashboard", Primary: true}},
 	}
 	// Every movie but one has a poster; the rows point at generated stand-in
 	// images written next to the gallery, not at /posters/.
@@ -206,7 +234,9 @@ func TestGallery(t *testing.T) {
 	if strings.Count(out, `<details class="user-group" open>`) != 2 {
 		t.Errorf("gallery: could not open two groups")
 	}
-	for _, want := range []string{"Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb", "button--primary", "1,284",
+	for _, want := range []string{"Updated 12 minutes ago", "Refreshing…", "Updated 3 hours ago", "refresh-control__hairline",
+		"Showing data from 3 hours ago.", "Last updated today at 11:42.", "Loading your library.", "There are no TV shows on this server",
+		"Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb", "button--primary", "1,284",
 		"Christopher Albrecht", "Unknown", "+ 2 unknown", "Not completed by anyone", `All <span class="user-group__count">10</span> users`,
 		`<span class="user-group__count">6</span> users`, "user-code--hue-10",
 		`class="poster poster--missing"`, `alt="Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb"`, `loading="lazy"`,
@@ -225,6 +255,16 @@ func TestGallery(t *testing.T) {
 	if err := os.WriteFile(path, []byte(out), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// galleryNow is the gallery's clock: 14:42, so "3 hours ago" was 11:42.
+var galleryNow = time.Date(2026, 9, 26, 14, 42, 0, 0, time.UTC)
+
+// galleryStatus is a loaded library with 1,284 movies and 212 series,
+// last updated ago before galleryNow.
+func galleryStatus(ago time.Duration, refreshing, failed bool) library.Status {
+	return library.Status{Loaded: true, Generation: 1, Refreshing: refreshing, Failed: failed,
+		Snapshot: library.Snapshot{Movies: make([]library.Movie, 1284), Series: make([]library.Series, 212), LoadedAt: galleryNow.Add(-ago)}}
 }
 
 // writeStandInPoster writes a 96×144 PNG with a vertical gradient, standing

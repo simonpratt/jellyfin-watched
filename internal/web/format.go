@@ -110,3 +110,36 @@ func userCode(name string) string {
 		return strings.ToUpper(string([]rune{first, last}))
 	}
 }
+
+// formatAgo renders how long ago something happened, rounded down: "less
+// than a minute ago", "1 minute ago", "12 minutes ago", "3 hours ago", "2
+// days ago".
+func formatAgo(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return "less than a minute ago"
+	case d < time.Hour:
+		return formatCount(int(d/time.Minute), "minute", "minutes") + " ago"
+	case d < 24*time.Hour:
+		return formatCount(int(d/time.Hour), "hour", "hours") + " ago"
+	}
+	return formatCount(int(d/(24*time.Hour)), "day", "days") + " ago"
+}
+
+// formatClock renders when something happened, relative to now's day, in
+// now's time zone: "today at 11:42", "yesterday at 23:59", "on 2 Sep at
+// 09:00", or with the year when it isn't this year.
+func formatClock(t, now time.Time) string {
+	t = t.In(now.Location())
+	day := func(t time.Time) time.Time { return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location()) }
+	clock := t.Format("15:04")
+	switch today := day(now); {
+	case day(t).Equal(today):
+		return "today at " + clock
+	case day(t).Equal(today.AddDate(0, 0, -1)):
+		return "yesterday at " + clock
+	case t.Year() == now.Year():
+		return "on " + t.Format("2 Jan") + " at " + clock
+	}
+	return "on " + t.Format("2 Jan 2006") + " at " + clock
+}

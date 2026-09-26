@@ -12,22 +12,28 @@
 <script src="/static/htmx.min.js" defer></script>
 </head>
 <body>
+{{/* #app reloads itself from the current URL (hx-get="") when the refresh
+     control reports new data ("library-updated"), swapping in the header
+     and content together. hx-disinherit keeps its attributes off the
+     controls inside it. */}}
+<div id="app" class="app" hx-get="" hx-trigger="library-updated from:body" hx-select="#app" hx-target="this" hx-swap="outerHTML" hx-disinherit="*">
 {{template "app-header" .Page}}
 <main class="page">
 {{template "content" .}}
 </main>
+</div>
 </body>
 </html>
 {{end}}
 
 {{/* app-header: Spool mark and name, the Movies / TV shows tabs, and the
-     slot on the right for the refresh control (ticket 07). Takes a Page. */}}
+     refresh control on the right. Takes a Page. */}}
 {{define "app-header"}}<header class="app-header">
 <a class="app-header__brand" href="/movies">{{template "spool-mark" "app-header__mark"}}<span class="app-header__name">Spool</span></a>
 <nav class="app-header__tabs" aria-label="Library">
 {{range .Tabs}}<a class="app-header__tab" href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Label}}{{if .Count}} <span class="app-header__count">{{.Count}}</span>{{end}}</a>
 {{end}}</nav>
-<div class="app-header__actions"></div>
+<div class="app-header__actions">{{template "refresh-control" .Refresh}}</div>
 </header>
 {{end}}
 

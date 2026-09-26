@@ -22,7 +22,17 @@ type stubSnapshots struct {
 	ok   bool
 }
 
-func (s stubSnapshots) Snapshot() (library.Snapshot, bool) { return s.snap, s.ok }
+// Status reports the snapshot as loaded by one refresh when ok, and no
+// refresh running.
+func (s stubSnapshots) Status() library.Status {
+	st := library.Status{Snapshot: s.snap, Loaded: s.ok}
+	if s.ok {
+		st.Generation = 1
+	}
+	return st
+}
+
+func (s stubSnapshots) RefreshNow() bool { return false }
 
 // stubPosters serves a fixed image for every poster and records requests.
 type stubPosters struct {
@@ -41,12 +51,12 @@ func (p *stubPosters) Poster(_ context.Context, id, tag string) ([]byte, string,
 	return []byte("RIFF-webp-" + id), "image/webp", nil
 }
 
-func newTestHandler(t *testing.T, s Snapshots) http.Handler {
+func newTestHandler(t *testing.T, s Library) http.Handler {
 	t.Helper()
 	return newTestHandlerWithPosters(t, s, &stubPosters{})
 }
 
-func newTestHandlerWithPosters(t *testing.T, s Snapshots, p Posters) http.Handler {
+func newTestHandlerWithPosters(t *testing.T, s Library, p Posters) http.Handler {
 	t.Helper()
 	h, err := NewHandler(s, p, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
@@ -93,14 +103,14 @@ func TestMoviesPageListsTitlesAndYears(t *testing.T) {
 
 func TestMoviesPageBeforeFirstLoad(t *testing.T) {
 	rec := get(t, newTestHandler(t, stubSnapshots{}), "/movies")
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "hasn't loaded yet") {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Loading your library.") {
 		t.Errorf("status %d body %s", rec.Code, rec.Body)
 	}
 }
 
 func TestMoviesPageEmptyLibrary(t *testing.T) {
 	rec := get(t, newTestHandler(t, stubSnapshots{ok: true}), "/movies")
-	if !strings.Contains(rec.Body.String(), "No movies in the library.") {
+	if !strings.Contains(rec.Body.String(), "There are no movies on this server") {
 		t.Errorf("body %s", rec.Body)
 	}
 }

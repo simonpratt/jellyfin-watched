@@ -4,7 +4,8 @@ package library
 
 import (
 	"context"
-	"sync/atomic"
+	"log/slog"
+	"sync"
 	"time"
 
 	"jellyfin-watched/internal/jellyfin"
@@ -95,39 +96,136 @@ type Options struct {
 	IncludeSpecials bool
 }
 
-// Cache holds the latest snapshot. Refresh builds a new snapshot and swaps it
-// in whole, so readers never see partial data.
+// Cache holds the latest snapshot and the state of its refreshes. Refresh
+// builds a new snapshot and swaps it in whole, so readers never see partial
+// data.
 type Cache struct {
 	src  Source
 	opts Options
-	snap atomic.Pointer[Snapshot]
 	now  func() time.Time
+
+	refreshing sync.Mutex // held for the whole of a refresh: one at a time
+	wake       chan struct{}
+
+	mu     sync.Mutex // guards status
+	status Status
+}
+
+// Status is the cache's current snapshot and what its refreshes are doing.
+type Status struct {
+	Snapshot Snapshot // the last good snapshot; zero until Loaded
+	Loaded   bool     // a refresh has succeeded at least once
+	// Generation counts successful refreshes, so a page can tell whether
+	// the data it shows has been replaced.
+	Generation int
+	Refreshing bool // a refresh is running or about to start
+	// Failed reports that the latest refresh failed; the last good
+	// snapshot, if any, is kept. FailedAt is when it failed.
+	Failed   bool
+	FailedAt time.Time
 }
 
 // NewCache returns an empty cache backed by src.
 func NewCache(src Source, opts Options) *Cache {
-	return &Cache{src: src, opts: opts, now: time.Now}
+	return &Cache{src: src, opts: opts, now: time.Now, wake: make(chan struct{}, 1)}
 }
 
 // Snapshot returns the current snapshot, or false if none has loaded yet.
 func (c *Cache) Snapshot() (Snapshot, bool) {
-	s := c.snap.Load()
-	if s == nil {
-		return Snapshot{}, false
+	st := c.Status()
+	return st.Snapshot, st.Loaded
+}
+
+// Status returns the current snapshot and refresh state.
+func (c *Cache) Status() Status {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.status
+}
+
+// Run refreshes the cache straight away, then again every interval after
+// the previous refresh finished, until ctx is done. RefreshNow starts one
+// sooner. Each outcome is logged; errors from the Jellyfin client never
+// contain the API key.
+func (c *Cache) Run(ctx context.Context, every time.Duration, log *slog.Logger) {
+	timer := time.NewTimer(0)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		case <-c.wake:
+		}
+		start := time.Now()
+		err := c.Refresh(ctx)
+		took := time.Since(start).Round(time.Millisecond)
+		switch {
+		case ctx.Err() != nil:
+			return
+		case err != nil:
+			log.Error("library refresh failed", "err", err, "took", took)
+		default:
+			st := c.Status()
+			log.Info("library loaded", "movies", len(st.Snapshot.Movies), "series", len(st.Snapshot.Series), "took", took)
+		}
+		// Timers from Go 1.23 on can be reset without draining.
+		timer.Reset(every)
 	}
-	return *s, true
+}
+
+// RefreshNow asks Run to refresh straight away and reports whether it will.
+// It returns false, starting nothing, while a refresh is already running,
+// so repeated clicks never start concurrent refreshes. The status shows
+// Refreshing from the moment it returns true.
+func (c *Cache) RefreshNow() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.status.Refreshing {
+		return false
+	}
+	c.status.Refreshing = true
+	select {
+	case c.wake <- struct{}{}:
+	default:
+	}
+	return true
 }
 
 // Refresh fetches the library from the source and replaces the snapshot. On
-// error the previous snapshot is kept.
+// error the previous snapshot is kept and the status reports the failure.
+// Refreshes run one at a time.
 func (c *Cache) Refresh(ctx context.Context) error {
+	c.refreshing.Lock()
+	defer c.refreshing.Unlock()
+	c.mu.Lock()
+	c.status.Refreshing = true
+	c.mu.Unlock()
+
+	snap, err := c.load(ctx)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.status.Refreshing = false
+	if err != nil {
+		c.status.Failed, c.status.FailedAt = true, c.now()
+		return err
+	}
+	c.status.Snapshot, c.status.Loaded, c.status.Failed, c.status.FailedAt = *snap, true, false, time.Time{}
+	c.status.Generation++
+	return nil
+}
+
+// load fetches the whole library into a new snapshot. Nothing is shared
+// with the current one, which pages go on reading until it is swapped.
+func (c *Cache) load(ctx context.Context) (*Snapshot, error) {
 	jfUsers, err := c.src.Users(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	items, err := c.src.Movies(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	users := make([]User, len(jfUsers))
 	for i, u := range jfUsers {
@@ -143,7 +241,7 @@ func (c *Cache) Refresh(ctx context.Context) error {
 	for _, u := range users {
 		ids, err := c.src.PlayedMovieIDs(ctx, u.ID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		for _, id := range ids {
 			if i, ok := index[id]; ok {
@@ -153,10 +251,9 @@ func (c *Cache) Refresh(ctx context.Context) error {
 	}
 	series, err := fetchTV(ctx, c.src, users, c.opts)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	c.snap.Store(&Snapshot{Users: users, Movies: movies, Series: series, LoadedAt: c.now()})
-	return nil
+	return &Snapshot{Users: users, Movies: movies, Series: series, LoadedAt: c.now()}, nil
 }
 
 // totalSize adds up the sizes of an item's versions (a movie's, or an

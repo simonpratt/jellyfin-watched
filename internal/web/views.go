@@ -2,15 +2,18 @@ package web
 
 import (
 	"net/url"
+	"strconv"
+	"time"
 
 	"jellyfin-watched/internal/library"
 )
 
-// Page is what the layout needs from every page: the document title and the
-// header's tabs.
+// Page is what the layout needs from every page: the document title, the
+// header's tabs and its refresh control.
 type Page struct {
-	Title string
-	Tabs  []Tab
+	Title   string
+	Tabs    []Tab
+	Refresh RefreshControl
 }
 
 // Tab is one of the header's Movies / TV shows tabs.
@@ -22,23 +25,145 @@ type Tab struct {
 }
 
 // newPage builds the layout's view model. current is "movies" or "tv".
-func newPage(title, current string, snap library.Snapshot, loaded bool) Page {
+func newPage(title, current string, st library.Status, now time.Time) Page {
 	movies := Tab{Label: "Movies", Href: "/movies", Current: current == "movies"}
-	if loaded {
-		movies.Count = formatNumber(len(snap.Movies))
-	}
 	tv := Tab{Label: "TV shows", Href: "/tv", Current: current == "tv"}
-	if loaded {
-		tv.Count = formatNumber(len(snap.Series))
+	if st.Loaded {
+		movies.Count = formatNumber(len(st.Snapshot.Movies))
+		tv.Count = formatNumber(len(st.Snapshot.Series))
 	}
-	return Page{Title: title, Tabs: []Tab{movies, tv}}
+	return Page{Title: title, Tabs: []Tab{movies, tv}, Refresh: newRefreshControl(st, now)}
+}
+
+// refreshPath is where the refresh control starts a refresh (POST) and
+// fetches its own state (GET).
+const refreshPath = "/refresh"
+
+// RefreshControl is the view model for the refresh-control component:
+// "Updated 12 minutes ago" and the "Refresh now" / "Refreshing…" button,
+// plus the loading hairline under the header while a refresh runs. The
+// control fetches itself from Poll every Every, so the age stays current
+// and the page learns when new data has arrived.
+type RefreshControl struct {
+	Updated string  // "Updated 12 minutes ago"; empty until the first load
+	Button  *Button // nil during the first load, when there's nothing to refresh
+	Loading bool    // a refresh is running: the hairline slides
+	Poll    string  // e.g. "/refresh?since=g3"
+	Every   string  // "2s" while loading, "30s" otherwise
+}
+
+// Poll intervals: often enough while loading that new rows appear soon
+// after they arrive, and otherwise often enough that "N minutes ago" is
+// never more than a minute out.
+const (
+	pollLoading = "2s"
+	pollIdle    = "30s"
+)
+
+// stateKey names what a page shows: which snapshot, and whether the last
+// refresh failed. The refresh control carries it, so a poll can tell the
+// page to reload once either has changed. "g3" is the third snapshot; "g3f"
+// the same with a failed refresh since.
+func stateKey(st library.Status) string {
+	k := "g" + strconv.Itoa(st.Generation)
+	if st.Failed {
+		k += "f"
+	}
+	return k
+}
+
+func newRefreshControl(st library.Status, now time.Time) RefreshControl {
+	rc := RefreshControl{
+		Loading: st.Refreshing || (!st.Loaded && !st.Failed),
+		Poll:    refreshPath + "?since=" + stateKey(st),
+		Every:   pollIdle,
+	}
+	if rc.Loading {
+		rc.Every = pollLoading
+	}
+	if st.Loaded {
+		rc.Updated = "Updated " + formatAgo(now.Sub(st.Snapshot.LoadedAt))
+	}
+	if !st.Loaded && !st.Failed {
+		return rc // first load: the hairline alone
+	}
+	// The ID stays the same in both states, so htmx keeps focus on the
+	// button when the control swaps.
+	rc.Button = &Button{Label: "Refresh now", Icon: "refresh", ID: "refresh-now",
+		Post: refreshPath, Target: "#refresh-control", Swap: "outerHTML"}
+	if st.Refreshing {
+		rc.Button = &Button{Label: "Refreshing…", Icon: "spinner", ID: "refresh-now", Busy: true}
+	}
+	return rc
+}
+
+// Notice is the view model for the notice component: what happened, then
+// what the app is doing about it.
+type Notice struct {
+	Headline string
+	Detail   string
+}
+
+// newNotice explains a failed refresh, or returns nil if the last one
+// succeeded. With data loaded, the last good data stays on screen.
+func newNotice(st library.Status, now time.Time) *Notice {
+	if !st.Failed {
+		return nil
+	}
+	if !st.Loaded {
+		return &Notice{
+			Headline: "Can't reach Jellyfin, so the library hasn't loaded yet.",
+			Detail:   "Refresh now tries the connection again.",
+		}
+	}
+	return &Notice{
+		Headline: "Can't reach Jellyfin. Showing data from " + formatAgo(now.Sub(st.Snapshot.LoadedAt)) + ".",
+		Detail:   "Last updated " + formatClock(st.Snapshot.LoadedAt, now) + ". Refresh now tries the connection again.",
+	}
+}
+
+// EmptyState is the view model for the empty-state component, shown in
+// place of a list. Loading is the first-load variant, centred under the
+// Spool reel.
+type EmptyState struct {
+	Loading  bool
+	Headline string
+	Lines    []string
+}
+
+// firstLoad is the empty state before the library has loaded, unless the
+// first refresh failed (a notice says so instead).
+func firstLoad(st library.Status) *EmptyState {
+	if st.Loaded || st.Failed {
+		return nil
+	}
+	return &EmptyState{
+		Loading:  true,
+		Headline: "Loading your library. This can take a minute on first start.",
+		Lines:    []string{"The page will show your movies and TV shows as soon as Jellyfin has sent them."},
+	}
+}
+
+// emptyLibrary is the empty state for a library with none of an item kind:
+// what ("movies"), what Jellyfin calls them ("series") and how new ones
+// are described ("Shows").
+func emptyLibrary(st library.Status, now time.Time, what, jellyfinName, added string) *EmptyState {
+	return &EmptyState{
+		Headline: "There are no " + what + " on this server",
+		Lines: []string{
+			"Jellyfin reported no " + jellyfinName + " at the last refresh, " + formatAgo(now.Sub(st.Snapshot.LoadedAt)) + ".",
+			added + " added in Jellyfin appear here after the next refresh.",
+		},
+	}
 }
 
 // MoviesPage is the view model for pages/movies.tmpl.
 type MoviesPage struct {
 	Page
 	Loaded  bool
-	Summary string // e.g. "1,284 movies"
+	Summary string      // e.g. "1,284 movies"
+	Notice  *Notice     // a failed refresh; nil normally
+	Empty   *EmptyState // first load or no movies; nil when there's a list
 	Movies  []MovieRow
 }
 
@@ -46,8 +171,10 @@ type MoviesPage struct {
 type TVPage struct {
 	Page
 	Loaded    bool
-	Summary   string  // e.g. "212 series · 1,406 seasons · 9.7 TB on disk"
-	ExpandAll *Button // "Expand all" / "Collapse all"; nil with no series
+	Summary   string      // e.g. "212 series · 1,406 seasons · 9.7 TB on disk"
+	Notice    *Notice     // a failed refresh; nil normally
+	Empty     *EmptyState // first load or no series; nil when there's a list
+	ExpandAll *Button     // "Expand all" / "Collapse all"; nil with no series
 	Series    []SeriesRow
 }
 
@@ -82,17 +209,21 @@ type Button struct {
 	// Disclosure is the borderless "Show 35 seasons" / "Hide seasons"
 	// button, with a chevron that follows Expanded.
 	Disclosure bool
-	// Icon is drawn before the label: "expand-all" or "collapse-all".
-	// Disclosure buttons draw their own chevron.
+	// Icon is drawn before the label: "expand-all", "collapse-all",
+	// "refresh", or "spinner" (an arc that spins, still under reduced
+	// motion). Disclosure buttons draw their own chevron.
 	Icon string
 	ID   string // stable across htmx swaps, so focus stays on the button
+	// Busy is an action already under way ("Refreshing…"): dimmed and
+	// aria-disabled, but still focusable so focus isn't lost.
+	Busy bool
 	// Expanded is aria-expanded, "true" or "false"; "" leaves it out.
 	Expanded string
 	Controls string // aria-controls: the ID of what it expands
-	// htmx: the fragment to GET, where it goes and how. PushURL puts the
-	// GET's URL in the address bar.
-	Get, Target, Swap string
-	PushURL           bool
+	// htmx: the fragment to GET, or the action to POST, where the response
+	// goes and how. PushURL puts the GET's URL in the address bar.
+	Get, Post, Target, Swap string
+	PushURL                 bool
 }
 
 // Size is the view model for the size component: "14.6 GB", or "Unknown".
@@ -216,10 +347,15 @@ func newMovieRow(m library.Movie, tags map[string]UserTag, totalUsers int) Movie
 	}
 }
 
-func newMoviesPage(snap library.Snapshot, loaded bool) MoviesPage {
-	p := MoviesPage{Page: newPage("Movies", "movies", snap, loaded), Loaded: loaded}
-	if !loaded {
+func newMoviesPage(st library.Status, now time.Time) MoviesPage {
+	p := MoviesPage{Page: newPage("Movies", "movies", st, now), Loaded: st.Loaded,
+		Notice: newNotice(st, now), Empty: firstLoad(st)}
+	if !st.Loaded {
 		return p
+	}
+	snap := st.Snapshot
+	if len(snap.Movies) == 0 {
+		p.Empty = emptyLibrary(st, now, "movies", "movies", "Movies")
 	}
 	p.Summary = formatCount(len(snap.Movies), "movie", "movies")
 	tags := newUserTags(snap.Users)
@@ -336,9 +472,16 @@ func newSeriesRow(sr library.Series, tags map[string]UserTag, totalUsers int, ex
 	return row
 }
 
-func newTVPage(snap library.Snapshot, loaded bool, exp expansion) TVPage {
-	p := TVPage{Page: newPage("TV shows", "tv", snap, loaded), Loaded: loaded}
-	if !loaded {
+func newTVPage(st library.Status, now time.Time, exp expansion) TVPage {
+	p := TVPage{Page: newPage("TV shows", "tv", st, now), Loaded: st.Loaded,
+		Notice: newNotice(st, now), Empty: firstLoad(st)}
+	if !st.Loaded {
+		return p
+	}
+	snap := st.Snapshot
+	if len(snap.Series) == 0 {
+		p.Empty = emptyLibrary(st, now, "TV shows", "series", "Shows")
+		p.Summary = formatCount(0, "series", "series")
 		return p
 	}
 	tags := newUserTags(snap.Users)

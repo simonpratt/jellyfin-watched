@@ -1,16 +1,15 @@
 {{define "content"}}
-<div class="page-head">
+{{if .Loaded}}<div class="page-head">
 <div class="page-head__text">
 <h1 class="page-head__title">TV shows</h1>
 {{if .Summary}}<p class="page-head__summary">{{.Summary}}</p>{{end}}
 </div>
 <div class="page-head__tools">{{if .ExpandAll}}{{template "button" .ExpandAll}}{{end}}</div>
 </div>
-{{if not .Loaded}}
-<p class="page-message">The library hasn't loaded yet.</p>
-{{else if not .Series}}
-<p class="page-message">No TV shows in the library.</p>
-{{else}}
+{{end}}
+{{if .Notice}}{{template "notice" .Notice}}{{end}}
+{{if .Empty}}{{template "empty-state" .Empty}}
+{{else if .Series}}
 <div class="list-head" aria-hidden="true"><span class="list-head__title">Title</span><span class="list-head__size">Size</span><span class="list-head__completion">Completed by · In progress</span></div>
 <ul class="series-list">
 {{range .Series}}{{template "series-row" .}}{{end}}

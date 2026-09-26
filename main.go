@@ -16,6 +16,10 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	// The stale-data notice gives a clock time ("Last updated today at
+	// 11:42") in the TZ environment variable's zone; the distroless image
+	// has no zoneinfo of its own.
+	_ "time/tzdata"
 
 	"jellyfin-watched/internal/artwork"
 	"jellyfin-watched/internal/config"
@@ -67,17 +71,14 @@ func run(ctx context.Context, getenv func(string) string, logOut io.Writer, onLi
 		onListen(ln.Addr())
 	}
 
-	// Initial load in the background so the page is served straight away.
-	// Scheduled and on-demand refreshes arrive in ticket 07.
+	// Refreshes run in the background, the first straight away, so pages
+	// are served (from the cache) from the start. Run returns on shutdown.
+	refreshDone := make(chan struct{})
 	go func() {
-		start := time.Now()
-		if err := cache.Refresh(ctx); err != nil {
-			logger.Error("library refresh failed", "err", err)
-			return
-		}
-		snap, _ := cache.Snapshot()
-		logger.Info("library loaded", "movies", len(snap.Movies), "series", len(snap.Series), "took", time.Since(start).Round(time.Millisecond))
+		defer close(refreshDone)
+		cache.Run(ctx, cfg.RefreshInterval, logger)
 	}()
+	defer func() { <-refreshDone }()
 
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()

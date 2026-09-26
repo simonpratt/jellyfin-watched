@@ -520,3 +520,30 @@ func TestItemDecodesSeasonAndEpisodeFields(t *testing.T) {
 		t.Errorf("episode = %+v", ep)
 	}
 }
+
+// Every request is bounded by the timeout given to New
+// (JELLYFIN_TIMEOUT_SECONDS), so a hung Jellyfin fails a refresh rather than
+// stalling it forever.
+func TestEachRequestUsesTheTimeout(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+	}))
+	defer srv.Close()
+	defer close(release)
+	c, err := New(srv.URL, testKey, 50*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	_, err = c.Users(context.Background())
+	if err == nil {
+		t.Fatal("want a timeout error")
+	}
+	if took := time.Since(start); took > 2*time.Second {
+		t.Errorf("request took %v, want about the 50ms timeout", took)
+	}
+	if strings.Contains(err.Error(), testKey) {
+		t.Errorf("error contains the key: %v", err)
+	}
+}

@@ -1,0 +1,9 @@
+{{/* notice: the one notice style, a raised surface with a strong hairline
+     and an info mark. The headline says what happened; the detail, what the
+     app is doing about it. Neutral: never a warning colour. Takes a Notice. */}}
+{{define "notice"}}<div class="notice" role="status">
+<svg class="notice__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="6.25"/><path d="M8 7.25v3.5M8 5.1v.1"/></svg>
+<p class="notice__headline">{{.Headline}}</p>
+{{if .Detail}}<p class="notice__detail">{{.Detail}}</p>{{end}}
+</div>
+{{end}}

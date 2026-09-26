@@ -1,0 +1,11 @@
+{{/* refresh-control: "Updated 12 minutes ago" and the "Refresh now" /
+     "Refreshing…" button, in the header. Takes a RefreshControl. It fetches
+     itself every few seconds (hx-trigger="every …"), which keeps the age
+     current and tells the page when new data has arrived. While a refresh
+     runs it also draws the header's loading hairline, which slides (still
+     under reduced motion); during the first load that is all it shows. */}}
+{{define "refresh-control"}}<div class="refresh-control" id="refresh-control" hx-get="{{.Poll}}" hx-trigger="every {{.Every}}" hx-swap="outerHTML">
+{{- if .Updated}}<span class="refresh-control__updated">{{.Updated}}</span>{{end}}
+{{- if .Button}}{{template "button" .Button}}{{end}}
+{{- if .Loading}}<span class="refresh-control__hairline" aria-hidden="true"></span>{{end -}}
+</div>{{end}}

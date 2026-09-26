@@ -2,18 +2,25 @@
      accent (password screen only); Disclosure is borderless text after a
      chevron that points right when collapsed and down when expanded
      ("Show 35 seasons" / "Hide seasons"). Icon draws "expand-all" or
-     "collapse-all" before the label. The htmx fields fetch a fragment; the
-     ID stays the same in the fragment, so htmx keeps focus on the button. */}}
-{{define "button"}}<button type="button"{{if .ID}} id="{{.ID}}"{{end}} class="button{{if .Primary}} button--primary{{end}}{{if .Disclosure}} button--disclosure{{end}}"
+     "collapse-all", "refresh" or "spinner" before the label. Busy is an
+     action under way ("Refreshing…"): aria-disabled rather than disabled,
+     so it keeps focus. The htmx fields fetch a fragment or post an action;
+     the ID stays the same in the response, so htmx keeps focus on the
+     button. */}}
+{{define "button"}}<button type="button"{{if .ID}} id="{{.ID}}"{{end}} class="button{{if .Primary}} button--primary{{end}}{{if .Disclosure}} button--disclosure{{end}}{{if .Busy}} button--busy{{end}}"
+{{- if .Busy}} aria-disabled="true"{{end}}
 {{- if .Expanded}} aria-expanded="{{.Expanded}}"{{end}}{{if .Controls}} aria-controls="{{.Controls}}"{{end}}
-{{- if .Get}} hx-get="{{.Get}}"{{end}}{{if .Target}} hx-target="{{.Target}}"{{end}}{{if .Swap}} hx-swap="{{.Swap}}"{{end}}{{if .PushURL}} hx-push-url="true"{{end}}>
+{{- if .Get}} hx-get="{{.Get}}"{{end}}{{if .Post}} hx-post="{{.Post}}"{{end}}{{if .Target}} hx-target="{{.Target}}"{{end}}{{if .Swap}} hx-swap="{{.Swap}}"{{end}}{{if .PushURL}} hx-push-url="true"{{end}}>
 {{- if .Disclosure}}{{if eq .Expanded "true"}}{{template "button-icon" "chevron-down"}}{{else}}{{template "button-icon" "chevron-right"}}{{end}}
 {{- else if .Icon}}{{template "button-icon" .Icon}}{{end}}{{.Label}}</button>{{end}}
 
-{{/* button-icon: a 16×16 stroke icon in currentColor. Takes its name. */}}
-{{define "button-icon"}}<svg class="button__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+{{/* button-icon: a 16×16 stroke icon in currentColor. Takes its name. The
+     spinner, a three-quarter arc, turns (see components.css). */}}
+{{define "button-icon"}}<svg class="button__icon{{if eq . "spinner"}} button__icon--spin{{end}}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
 {{- if eq . "chevron-right"}}<path d="M6.25 4.5 9.75 8l-3.5 3.5"/>
 {{- else if eq . "chevron-down"}}<path d="M4.5 6.25 8 9.75l3.5-3.5"/>
 {{- else if eq . "expand-all"}}<path d="M5 3.5 8 6.5l3-3M5 9.5l3 3 3-3"/>
 {{- else if eq . "collapse-all"}}<path d="M5 6.5 8 3.5l3 3M5 12.5l3-3 3 3"/>
+{{- else if eq . "refresh"}}<path d="M13 8a5 5 0 1 1-1.5-3.55"/><path d="M11.75 1.75v2.9h-2.9"/>
+{{- else if eq . "spinner"}}<path d="M8 3a5 5 0 1 1-5 5"/>
 {{- end}}</svg>{{end}}

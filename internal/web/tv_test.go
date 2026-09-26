@@ -200,12 +200,12 @@ func TestTVContentFragmentForHtmx(t *testing.T) {
 }
 
 func TestTVPageStates(t *testing.T) {
-	if body := get(t, newTestHandler(t, stubSnapshots{}), "/tv").Body.String(); !strings.Contains(body, "hasn't loaded yet") ||
+	if body := get(t, newTestHandler(t, stubSnapshots{}), "/tv").Body.String(); !strings.Contains(body, "Loading your library.") ||
 		strings.Contains(body, "tv-expand-all") {
 		t.Errorf("before first load:\n%s", body)
 	}
 	body := get(t, newTestHandler(t, stubSnapshots{ok: true}), "/tv").Body.String()
-	if !strings.Contains(body, "No TV shows in the library.") || strings.Contains(body, "tv-expand-all") {
+	if !strings.Contains(body, "There are no TV shows on this server") || strings.Contains(body, "tv-expand-all") {
 		t.Errorf("empty library:\n%s", body)
 	}
 }

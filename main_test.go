@@ -24,13 +24,25 @@ type fakeJellyfin struct {
 	mu      sync.Mutex
 	methods []string
 	fail    bool
+	// renamed, if set, is Alien's title: a change made in Jellyfin.
+	renamed string
+}
+
+func (f *fakeJellyfin) set(fn func(*fakeJellyfin)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	fn(f)
 }
 
 func (f *fakeJellyfin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	f.methods = append(f.methods, r.Method+" "+r.URL.Path)
+	fail, alien := f.fail, f.renamed
 	f.mu.Unlock()
-	if f.fail || r.Header.Get("Authorization") != "MediaBrowser Token="+testKey {
+	if alien == "" {
+		alien = "Alien"
+	}
+	if fail || r.Header.Get("Authorization") != "MediaBrowser Token="+testKey {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -57,7 +69,7 @@ func (f *fakeJellyfin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch q.Get("includeItemTypes") {
 	case "Movie":
 		items = []map[string]any{
-			{"Id": "1", "Name": "Alien", "Type": "Movie", "ProductionYear": 1979,
+			{"Id": "1", "Name": alien, "Type": "Movie", "ProductionYear": 1979,
 				"ImageTags":    map[string]string{"Primary": "tag1"},
 				"MediaSources": []map[string]any{{"Id": "1", "Size": 15676630630}}},
 			{"Id": "2", "Name": "Dr. Strangelove", "Type": "Movie", "ProductionYear": 1964,
@@ -382,6 +394,59 @@ func TestAppLogsFailedRefreshWithoutKey(t *testing.T) {
 	}
 	if strings.Contains(logs.String(), testKey) || strings.Contains(page, testKey) {
 		t.Errorf("API key leaked:\n%s\n%s", logs, page)
+	}
+}
+
+func post(t *testing.T, url string) string {
+	t.Helper()
+	resp, err := http.Post(url, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST %s: status %d", url, resp.StatusCode)
+	}
+	return string(b)
+}
+
+// "Refresh now" fetches changes from Jellyfin; when Jellyfin then goes
+// away, the last good data stays with a notice, and the failure is logged
+// without the key.
+func TestAppRefreshNowAndStaleData(t *testing.T) {
+	fake := &fakeJellyfin{}
+	base, logs, stop := startApp(t, fake)
+	defer stop()
+	waitFor(t, base+"/movies", "Alien")
+	waitFor(t, base+"/refresh?since=g1", "Refresh now")
+
+	fake.set(func(f *fakeJellyfin) { f.renamed = "Aliens" })
+	if body := post(t, base+"/refresh"); !strings.Contains(body, "Refresh") {
+		t.Errorf("POST /refresh:\n%s", body)
+	}
+	waitFor(t, base+"/movies", ">Aliens<")
+	// The page's poll learns of the new data.
+	resp, err := http.Get(base + "/refresh?since=g1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.Header.Get("HX-Trigger") != "library-updated" {
+		t.Errorf("poll after refresh: HX-Trigger %q", resp.Header.Get("HX-Trigger"))
+	}
+
+	fake.set(func(f *fakeJellyfin) { f.fail, f.renamed = true, "Alien³" })
+	post(t, base+"/refresh")
+	page := waitFor(t, base+"/movies", "Can&#39;t reach Jellyfin. Showing data from less than a minute ago.")
+	if !strings.Contains(page, ">Aliens<") {
+		t.Error("last good data not kept")
+	}
+	if strings.Contains(page+logs.String(), testKey) {
+		t.Error("API key in page or logs")
+	}
+	if n := strings.Count(logs.String(), "library refresh failed"); n != 1 {
+		t.Errorf("%d failures logged, want 1:\n%s", n, logs)
 	}
 }
 
