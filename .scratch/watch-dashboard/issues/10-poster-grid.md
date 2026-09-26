@@ -4,7 +4,7 @@
 
 **Blocked by:** 06 (TV shows list with season completion)
 
-**Status:** ready-for-agent
+**Status:** wont-do (built in cae4a5c, then reverted in 8c9f67d: the grid isn't wanted)
 
 - [ ] A layout toggle switches between list and grid on both tabs, and works with the keyboard
 - [ ] The grid shows the same facts as the list, as the design specifies, including how seasons are reached for series
