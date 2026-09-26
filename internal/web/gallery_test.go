@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -25,6 +26,8 @@ const galleryTmpl = `{{define "gallery"}}<!doctype html>
 .gallery { padding: var(--space-8); display: grid; gap: var(--space-10); }
 .gallery__label { font: var(--weight-medium) var(--text-xs)/1.4 var(--font-mono); color: var(--text-3); margin: 0 0 var(--space-3); }
 .gallery__row { display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: center; }
+.gallery__sizes { display: grid; gap: var(--space-3); width: calc(2 * var(--space-12)); text-align: right; }
+.gallery__stack { display: grid; gap: var(--space-4); justify-items: start; }
 </style>
 </head>
 <body>
@@ -33,6 +36,10 @@ const galleryTmpl = `{{define "gallery"}}<!doctype html>
 <section><h2 class="gallery__label">Header · TV shows current, before first load</h2>{{template "app-header" .HeaderTV}}</section>
 <section><h2 class="gallery__label">Poster · placeholder</h2><div class="gallery__row">{{range .Posters}}{{template "poster" .}}{{end}}</div></section>
 <section><h2 class="gallery__label">Button · default, primary</h2><div class="gallery__row">{{range .Buttons}}{{template "button" .}}{{end}}</div></section>
+<section><h2 class="gallery__label">User tag · all 10 users, then user 11 wrapping to hue 1</h2><div class="gallery__row">{{range .Tags}}{{template "user-tag" .}}{{end}}</div></section>
+<section><h2 class="gallery__label">Size · movie, 4K remux, series total, unknown, sum with unknowns</h2><div class="gallery__sizes">{{range .Sizes}}<div>{{template "size" .}}</div>{{end}}</div></section>
+<section><h2 class="gallery__label">User group · 4 users, 6 users collapsed, all 10 open</h2><div class="gallery__stack">{{range .Groups}}<div>{{template "user-group" .}}</div>{{end}}</div></section>
+<section><h2 class="gallery__label">Completion · nobody</h2>{{template "completion" .Nobody}}</section>
 <section><h2 class="gallery__label">Movie row</h2><ul class="movie-list">{{range .Rows}}{{template "movie-row" .}}{{end}}</ul></section>
 </div>
 </body>
@@ -44,6 +51,10 @@ type gallery struct {
 	Posters                []Poster
 	Buttons                []Button
 	Rows                   []MovieRow
+	Tags                   []UserTag
+	Sizes                  []Size
+	Groups                 []UserGroup
+	Nobody                 Completion
 }
 
 // TestGallery renders every component with edge-case fixtures and writes
@@ -57,13 +68,25 @@ func TestGallery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	const gib = 1 << 30
+	var users []library.User
+	for i, name := range []string{"Sam", "Priya", "Jonas", "Mei", "Alex", "Theo", "Rosa", "Kwame", "Lin",
+		"Anastasia Kowalczyk", "Christopher Albrecht"} {
+		users = append(users, library.User{ID: strconv.Itoa(i), Name: name})
+	}
+	ten := users[:10]
+	tags := newUserTags(ten)
+	tags["10"] = newUserTags(users)["10"]
+
 	added := time.Date(2025, 3, 2, 12, 0, 0, 0, time.UTC)
 	movies := []library.Movie{
-		{Title: "2001: A Space Odyssey", Year: 1968, Added: time.Date(2024, 2, 14, 0, 0, 0, 0, time.UTC)},
-		{Title: "Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb", Year: 1964, Added: added},
-		{Title: "The Simpsons Movie", Year: 2007, Added: added},
-		{Title: "No year, no added date"},
-		{Title: "Супер фильм", Year: 2020, Added: added},
+		{Title: "2001: A Space Odyssey", Year: 1968, Added: time.Date(2024, 2, 14, 0, 0, 0, 0, time.UTC), Size: 582 * gib / 10, CompletedBy: []library.User{ten[0], ten[2]}},
+		{Title: "Alien", Year: 1979, Added: added, Size: 324 * gib / 10, CompletedBy: ten},
+		{Title: "Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb", Year: 1964, Added: added, Size: 213 * gib / 10, CompletedBy: []library.User{ten[9], ten[0]}},
+		{Title: "Everything Everywhere All at Once", Year: 2022, Added: added, Size: 12 * gib, CompletedBy: []library.User{ten[1], ten[8], ten[7], ten[4], ten[5], ten[2]}},
+		{Title: "The Simpsons Movie", Year: 2007, Added: added, Size: 798 * gib / 10, CompletedBy: []library.User{ten[5], ten[3], ten[7], ten[8]}},
+		{Title: "No year, no added date, unknown size"},
+		{Title: "Супер фильм", Year: 2020, Added: added, Size: 44 * gib / 10, CompletedBy: []library.User{ten[3]}},
 	}
 	g := gallery{
 		HeaderMovies: newPage("Movies", "movies", library.Snapshot{Movies: make([]library.Movie, 1284)}, true),
@@ -71,17 +94,43 @@ func TestGallery(t *testing.T) {
 		Buttons:      []Button{{Label: "Clear search"}, {Label: "Open dashboard", Primary: true}},
 	}
 	for _, m := range movies {
-		row := newMovieRow(m)
+		row := newMovieRow(m, tags, len(ten))
 		g.Rows = append(g.Rows, row)
 		g.Posters = append(g.Posters, row.Poster)
 	}
+	for _, u := range users {
+		g.Tags = append(g.Tags, tags[u.ID])
+	}
+	g.Sizes = []Size{newSize(146 * gib / 10), newSize(798 * gib / 10), newSize(194 * (1 << 40) / 100), newSize(0),
+		{Value: "38.1", Unit: "GB", UnknownCount: 2}}
+	g.Groups = []UserGroup{
+		newUserGroup(ten[:4], tags, len(ten)),
+		newUserGroup(ten[4:], tags, len(ten)),
+		newUserGroup(ten, tags, len(ten)),
+	}
+	g.Nobody = newCompletion(nil, tags, len(ten))
 
 	var buf bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&buf, "gallery", g); err != nil {
 		t.Fatalf("rendering gallery: %v", err)
 	}
-	out := buf.String()
-	for _, want := range []string{"Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb", "button--primary", "1,284"} {
+	// Show the "all 10" group and the 6-user movie row open, so the
+	// screenshot has both states (Components sheet shows both).
+	parts := strings.Split(buf.String(), `<details class="user-group">`)
+	for i := range parts[1:] {
+		if i == 1 || i == 3 {
+			parts[i+1] = " open>" + parts[i+1]
+		} else {
+			parts[i+1] = ">" + parts[i+1]
+		}
+	}
+	out := strings.Join(parts, `<details class="user-group"`)
+	if strings.Count(out, `<details class="user-group" open>`) != 2 {
+		t.Errorf("gallery: could not open two groups")
+	}
+	for _, want := range []string{"Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb", "button--primary", "1,284",
+		"Christopher Albrecht", "Unknown", "+ 2 unknown", "Not completed by anyone", `All <span class="user-group__count">10</span> users`,
+		`<span class="user-group__count">6</span> users`, "user-code--hue-10"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("gallery missing %q", want)
 		}
@@ -91,7 +140,7 @@ func TestGallery(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(out), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

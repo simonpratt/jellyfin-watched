@@ -11,7 +11,7 @@
 {{else if not .Movies}}
 <p class="page-message">No movies in the library.</p>
 {{else}}
-<div class="list-head" aria-hidden="true"><span class="list-head__title">Title</span></div>
+<div class="list-head" aria-hidden="true"><span class="list-head__title">Title</span><span class="list-head__size">Size</span><span class="list-head__completion">Completed by</span></div>
 <ul class="movie-list">
 {{range .Movies}}{{template "movie-row" .}}{{end}}
 </ul>

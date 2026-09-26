@@ -33,12 +33,29 @@ func (f *fakeJellyfin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if r.URL.Path == "/Users" {
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{"Id": "u1", "Name": "sally"},
+			{"Id": "u2", "Name": "Anastasia Kowalczyk"},
+		})
+		return
+	}
+	items := []map[string]any{
+		{"Id": "1", "Name": "Alien", "Type": "Movie", "ProductionYear": 1979,
+			"MediaSources": []map[string]any{{"Id": "1", "Size": 15676630630}}},
+		{"Id": "2", "Name": "Dr. Strangelove", "Type": "Movie", "ProductionYear": 1964,
+			"MediaSources": []map[string]any{{"Id": "2"}}},
+	}
+	switch r.URL.Query().Get("userId") {
+	case "":
+	case "u2": // Anastasia has played Alien
+		items = items[:1]
+	default:
+		items = nil
+	}
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"Items": []map[string]any{
-			{"Id": "1", "Name": "Alien", "Type": "Movie", "ProductionYear": 1979},
-			{"Id": "2", "Name": "Dr. Strangelove", "Type": "Movie", "ProductionYear": 1964},
-		},
-		"TotalRecordCount": 2,
+		"Items":            items,
+		"TotalRecordCount": len(items),
 		"StartIndex":       0,
 	})
 }
@@ -132,7 +149,9 @@ func TestAppServesMoviesFromJellyfinWithGETOnly(t *testing.T) {
 	base, logs, stop := startApp(t, fake)
 
 	page := waitFor(t, base+"/movies", "Dr. Strangelove")
-	for _, want := range []string{"Alien", "1979", "1964"} {
+	for _, want := range []string{"Alien", "1979", "1964",
+		`<span class="size__value">14.6</span> <span class="size__unit">GB</span>`, "Unknown",
+		`<span class="user-tag__name">Anastasia Kowalczyk</span>`, "Not completed by anyone"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page missing %q", want)
 		}

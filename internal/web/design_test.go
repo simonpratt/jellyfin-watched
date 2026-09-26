@@ -136,3 +136,26 @@ func luminance(hex string) float64 {
 	}
 	return 0.2126*ch(0) + 0.7152*ch(1) + 0.0722*ch(2)
 }
+
+// Nothing in the stylesheet can single out large sizes or unwatched items
+// (DESIGN.md §3): the size and completion blocks never take the accent or a
+// user hue, and there are no modifiers keyed on either.
+func TestSizeAndCompletionCSSIsNeutral(t *testing.T) {
+	b, err := fs.ReadFile(assets, "static/css/components.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rule := regexp.MustCompile(`(?s)([^{}]+)\{([^}]*)\}`)
+	for _, m := range rule.FindAllStringSubmatch(string(b), -1) {
+		sel, body := m[1], m[2]
+		if !regexp.MustCompile(`\.(size|completion)\b`).MatchString(sel) {
+			continue
+		}
+		if strings.Contains(body, "--accent") || strings.Contains(body, "--user-") {
+			t.Errorf("%s uses the accent or a user hue", strings.TrimSpace(sel))
+		}
+		if regexp.MustCompile(`--(large|big|huge|warn|unwatched|none|empty)`).MatchString(sel) {
+			t.Errorf("judgemental modifier %s", strings.TrimSpace(sel))
+		}
+	}
+}

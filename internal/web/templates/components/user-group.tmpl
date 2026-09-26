@@ -1,0 +1,7 @@
+{{/* user-group: a set of user tags. Takes a UserGroup. Under five users the
+     tags sit in a row; five or more collapse to a stack of codes and "All 10
+     users" / "6 users", which a native disclosure expands to the full tags. */}}
+{{define "user-group"}}{{if .Collapsed}}<details class="user-group">
+<summary class="user-group__summary"><span class="user-group__stack" aria-hidden="true">{{range .Tags}}{{template "user-code" .}}{{end}}</span><span class="user-group__label">{{.CountPrefix}}<span class="user-group__count">{{.Count}}</span>{{.CountSuffix}}</span><svg class="user-group__chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><path d="M4.5 6.25 8 9.75l3.5-3.5"/></svg></summary>
+<ul class="user-group__tags">{{range .Tags}}<li>{{template "user-tag" .}}</li>{{end}}</ul>
+</details>{{else}}<ul class="user-group__tags">{{range .Tags}}<li>{{template "user-tag" .}}</li>{{end}}</ul>{{end}}{{end}}

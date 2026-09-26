@@ -1,0 +1,4 @@
+{{/* completion: who has completed an item. Takes a Completion. Completed
+     users as a user-group, otherwise the plain statement "Not completed by
+     anyone", styled as calmly as any list of names (DESIGN.md §3). */}}
+{{define "completion"}}<div class="completion">{{if .Completed.Tags}}{{template "user-group" .Completed}}{{else}}<p class="completion__none">Not completed by anyone</p>{{end}}</div>{{end}}

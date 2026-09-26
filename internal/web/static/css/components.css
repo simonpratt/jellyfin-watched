@@ -251,9 +251,13 @@ a {
 /* -------------------------------------------------------------- list-head */
 /* Column labels above a list; shares the row's grid. */
 
+/* Rows and the list head share one column template: poster, title (1fr),
+   size (a fixed width, so sizes line up down the list), completion (1fr). The
+   size column is twice --space-12: the design has no token for it, and 96px
+   fits "Unknown" and "1024.0 GB". */
 .list-head {
   display: grid;
-  grid-template-columns: var(--poster-w) minmax(0, 1fr);
+  grid-template-columns: var(--poster-w) minmax(0, 1fr) calc(2 * var(--space-12)) minmax(0, 1fr);
   column-gap: var(--space-6);
   align-items: center;
   min-height: var(--space-10);
@@ -268,6 +272,10 @@ a {
   grid-column: 2;
 }
 
+.list-head__size {
+  text-align: right;
+}
+
 @media (max-width: 40rem) {
   .page-head,
   .page-message,
@@ -276,7 +284,14 @@ a {
   }
 
   .list-head {
+    grid-template-columns: var(--poster-w) minmax(0, 1fr);
     column-gap: var(--space-4);
+  }
+
+  /* Size and completion stack under the title, so their labels go. */
+  .list-head__size,
+  .list-head__completion {
+    display: none;
   }
 }
 
@@ -317,9 +332,23 @@ a {
   background: var(--accent-hover);
 }
 
+/* ----------------------------------------------------------- completion */
+/* Who completed an item: a user-group, or the plain "Not completed by
+   anyone". Neither takes the accent or any colour of its own (DESIGN.md §3). */
+
+.completion {
+  min-width: 0;
+}
+
+.completion__none {
+  color: var(--text-2);
+  font-size: var(--text-md);
+  line-height: 1.4;
+}
+
 /* ------------------------------------------------------------ movie-row */
-/* Poster, then title over year and added date. Size and "Completed by"
-   columns join the grid in ticket 04. */
+/* Poster, title over year and added date, size, then who completed it.
+   Narrow screens stack size and completion under the title. */
 
 .movie-list {
   padding: 0;
@@ -328,7 +357,7 @@ a {
 
 .movie-row {
   display: grid;
-  grid-template-columns: var(--poster-w) minmax(0, 1fr);
+  grid-template-columns: var(--poster-w) minmax(0, 1fr) calc(2 * var(--space-12)) minmax(0, 1fr);
   column-gap: var(--space-6);
   align-items: center;
   min-height: var(--row-min);
@@ -362,10 +391,49 @@ a {
   font-family: var(--font-mono);
 }
 
+/* On wide screens size and completion are grid columns of the row itself. */
+.movie-row__facts {
+  display: contents;
+}
+
+.movie-row__size {
+  text-align: right;
+}
+
 @media (max-width: 40rem) {
   .movie-row {
+    grid-template-columns: var(--poster-w) minmax(0, 1fr);
     column-gap: var(--space-4);
+    padding-block: var(--space-3);
     padding-inline: var(--space-4);
+  }
+
+  .movie-row > .poster {
+    grid-row: 1 / span 2;
+    align-self: start;
+  }
+
+  /* Size, then completion beside it, wrapping under it when it won't fit. */
+  .movie-row__facts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-4);
+    margin-top: var(--space-2);
+  }
+
+  .movie-row__main,
+  .movie-row__facts {
+    grid-column: 2;
+  }
+
+  .movie-row__size {
+    text-align: left;
+  }
+
+  .movie-row__completion {
+    min-width: 0;
+    max-width: 100%;
   }
 }
 
@@ -391,3 +459,157 @@ a {
   font-weight: var(--weight-strong);
   line-height: 1;
 }
+
+/* ----------------------------------------------------------------- size */
+/* Mono value, one decimal, with a small dim unit. Every size has the same
+   weight and colour however large (DESIGN.md §3). --unknown: "Unknown" in
+   the body face. __note: "+ N unknown" on its own line under a sum. */
+
+.size {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-row);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.size__unit {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+.size__note {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+.size--unknown {
+  color: var(--text-3);
+  font-family: var(--font-sans);
+}
+
+/* ----------------------------------------------------------- user-group */
+/* A row of user tags. Five or more collapse to a disclosure: overlapping
+   code squares, then "All 10 users" / "6 users" and a chevron; opening it
+   lists the full tags underneath. */
+
+.user-group__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+
+/* flex-wrap: a very narrow column puts the label under the stack rather
+   than overflowing. */
+.user-group__summary {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  max-width: 100%;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  color: var(--text);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  list-style: none;
+  cursor: pointer;
+  transition: background-color var(--duration) ease;
+}
+
+.user-group__summary::-webkit-details-marker {
+  display: none;
+}
+
+.user-group__summary:hover {
+  background: var(--bg-hover);
+}
+
+.user-group__stack {
+  display: flex;
+}
+
+/* Each code tucks under the next, separated by a surface-coloured ring. */
+.user-group__stack .user-code {
+  outline: 2px solid var(--bg-raised);
+}
+
+.user-group__stack .user-code + .user-code {
+  margin-left: calc(-1 * var(--space-1));
+}
+
+.user-group__count {
+  font-family: var(--font-mono);
+}
+
+.user-group__chevron {
+  width: var(--space-4);
+  height: var(--space-4);
+  color: var(--text-3);
+  transition: transform var(--duration) ease;
+}
+
+.user-group[open] .user-group__chevron {
+  transform: rotate(180deg);
+}
+
+.user-group[open] .user-group__tags {
+  margin-top: var(--space-2);
+}
+
+/* ------------------------------------------------------------- user-tag */
+/* A user's name after their two-letter code. The code, on the user's hue
+   (--user-1…--user-10, in Jellyfin's /Users order), is what tells users
+   apart; the hue only speeds scanning and carries no meaning. */
+
+.user-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  color: var(--text);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+.user-tag__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.user-code {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: var(--space-5);
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-xs);
+  background: var(--user-1);
+  color: var(--on-user);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  line-height: 1.4;
+}
+
+.user-code--hue-1 { background: var(--user-1); }
+.user-code--hue-2 { background: var(--user-2); }
+.user-code--hue-3 { background: var(--user-3); }
+.user-code--hue-4 { background: var(--user-4); }
+.user-code--hue-5 { background: var(--user-5); }
+.user-code--hue-6 { background: var(--user-6); }
+.user-code--hue-7 { background: var(--user-7); }
+.user-code--hue-8 { background: var(--user-8); }
+.user-code--hue-9 { background: var(--user-9); }
+.user-code--hue-10 { background: var(--user-10); }

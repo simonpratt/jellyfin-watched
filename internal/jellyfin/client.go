@@ -82,6 +82,25 @@ type Item struct {
 	// against Jellyfin 12.1.0: it is only returned when the request asks for
 	// fields=DateCreated, formatted like "2026-04-05T21:22:25.7865705Z".
 	DateCreated time.Time `json:"DateCreated,omitzero"`
+	// MediaSources lists the item's versions (e.g. 1080p and 4K). Only
+	// returned when the request asks for fields=MediaSources.
+	MediaSources []MediaSource `json:"MediaSources,omitempty"`
+}
+
+// MediaSource is one version of an item.
+//
+// Confirmed against Jellyfin 12.1.0: with fields=MediaSources each movie has
+// a MediaSources array (one entry per version) and each entry has Size, the
+// file size in bytes as a JSON integer (e.g. 20559445148). Not yet checked on
+// 10.10 or 10.11; a missing or null Size decodes as 0, meaning unknown.
+type MediaSource struct {
+	Size int64 `json:"Size,omitempty"`
+}
+
+// User is one Jellyfin user.
+type User struct {
+	ID   string `json:"Id"`
+	Name string `json:"Name"`
 }
 
 type itemsPage struct {
@@ -122,6 +141,46 @@ func (c *Client) Movies(ctx context.Context) ([]Item, error) {
 		"recursive":        {"true"},
 		"sortBy":           {"SortName"},
 		"sortOrder":        {"Ascending"},
-		"fields":           {"DateCreated"},
+		"fields":           {"DateCreated,MediaSources"},
 	})
+}
+
+// Users returns every user, in the order Jellyfin lists them.
+//
+// Confirmed against Jellyfin 12.1.0: GET /Users with an admin API key returns
+// a bare JSON array of UserDto (not an {Items} page), including disabled and
+// hidden users.
+func (c *Client) Users(ctx context.Context) ([]User, error) {
+	var users []User
+	if err := c.Get(ctx, "/Users", nil, &users); err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
+// PlayedMovieIDs returns the IDs of the movies Jellyfin reports as played
+// (UserData.Played = true) for one user, including those marked watched
+// manually.
+//
+// It filters with isPlayed=true alone, never IsPlayed/IsUnplayed in filters,
+// which Jellyfin applies only one of (REQUIREMENTS.md §5). Confirmed against
+// Jellyfin 12.1.0: with userId, isPlayed=true returns exactly the movies whose
+// UserData.Played is true for that user; without userId the server answers
+// 500.
+func (c *Client) PlayedMovieIDs(ctx context.Context, userID string) ([]string, error) {
+	items, err := c.items(ctx, url.Values{
+		"userId":           {userID},
+		"includeItemTypes": {"Movie"},
+		"recursive":        {"true"},
+		"isPlayed":         {"true"},
+		"enableImages":     {"false"},
+	})
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, len(items))
+	for i, it := range items {
+		ids[i] = it.ID
+	}
+	return ids, nil
 }

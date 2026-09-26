@@ -1,0 +1,5 @@
+{{/* size: a size on disk, right-aligned, mono, one decimal, small unit.
+     Takes a Size. "Unknown" when Jellyfin reported none; a sum that left
+     unknown items out says "+ N unknown" on a second line. Every size looks
+     the same however large (DESIGN.md §3). */}}
+{{define "size"}}{{if .Unknown}}<span class="size size--unknown">Unknown</span>{{else}}<span class="size"><span class="size__value">{{.Value}}</span> <span class="size__unit">{{.Unit}}</span>{{if .UnknownCount}}<span class="size__note">+ {{.UnknownCount}} unknown</span>{{end}}</span>{{end}}{{end}}

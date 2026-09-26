@@ -5,5 +5,9 @@
 <h2 class="movie-row__title">{{.Title}}</h2>
 {{if or .Year .Added}}<p class="movie-row__meta">{{if .Year}}<span class="movie-row__year">{{.Year}}</span>{{end}}{{if .Added}}<span class="movie-row__added">{{.Added}}</span>{{end}}</p>{{end}}
 </div>
+<div class="movie-row__facts">
+<div class="movie-row__size">{{template "size" .Size}}</div>
+<div class="movie-row__completion">{{template "completion" .Completion}}</div>
+</div>
 </li>
 {{end}}

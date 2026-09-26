@@ -1,0 +1,8 @@
+{{/* user-tag: a user's name with their two-letter code on their hue. Takes a
+     UserTag. The code, not the colour, tells users apart; screen readers get
+     the name only. In-progress tags ("x / y" and a bar) arrive in ticket 06. */}}
+{{define "user-tag"}}<span class="user-tag">{{template "user-code" .}}<span class="user-tag__name">{{.Name}}</span></span>{{end}}
+
+{{/* user-code: the code square on its own, as used in a user-group's stack.
+     Takes a UserTag. */}}
+{{define "user-code"}}<span class="user-code user-code--hue-{{.Hue}}" aria-hidden="true">{{.Code}}</span>{{end}}

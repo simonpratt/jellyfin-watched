@@ -235,3 +235,76 @@ func TestFontsEmbeddedWithLicence(t *testing.T) {
 		t.Error("tokens.css lost the system font fallback")
 	}
 }
+
+func TestMovieRowsShowSizeAndWhoCompleted(t *testing.T) {
+	all := []library.User{
+		{ID: "s", Name: "sally"}, {ID: "a", Name: "Anastasia Kowalczyk"}, {ID: "h", Name: "H"},
+		{ID: "k", Name: "kayla"}, {ID: "b", Name: "bec"}, {ID: "f", Name: "follicle"},
+	}
+	h := newTestHandler(t, stubSnapshots{ok: true, snap: library.Snapshot{Users: all, Movies: []library.Movie{
+		{ID: "1", Title: "Two Users", Size: 15676630630, CompletedBy: []library.User{all[1], all[2]}},
+		{ID: "2", Title: "Nobody", Size: 85899345920},
+		{ID: "3", Title: "Unknown Size", CompletedBy: all[:1]},
+		{ID: "4", Title: "Everyone", Size: 1 << 30, CompletedBy: all},
+	}}})
+	body := get(t, h, "/movies").Body.String()
+
+	for _, want := range []string{
+		`<span class="size__value">14.6</span> <span class="size__unit">GB</span>`,
+		`<span class="size__value">80.0</span> <span class="size__unit">GB</span>`,
+		`<span class="size size--unknown">Unknown</span>`,
+		// Tags carry the name and a two-letter code, so colour is never the
+		// only way to tell users apart; hues follow /Users order.
+		`<span class="user-code user-code--hue-2" aria-hidden="true">AK</span><span class="user-tag__name">Anastasia Kowalczyk</span>`,
+		`<span class="user-code user-code--hue-3" aria-hidden="true">H</span><span class="user-tag__name">H</span>`,
+		`<span class="user-code user-code--hue-1" aria-hidden="true">SA</span><span class="user-tag__name">sally</span>`,
+		`<p class="completion__none">Not completed by anyone</p>`,
+		// Five or more users collapse into an expandable group.
+		`<details class="user-group">`,
+		`All <span class="user-group__count">6</span> users`,
+		`<span class="list-head__size">Size</span>`,
+		`<span class="list-head__completion">Completed by</span>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page missing %s", want)
+		}
+	}
+	if n := strings.Count(body, "Not completed by anyone"); n != 1 {
+		t.Errorf(`"Not completed by anyone" appears %d times, want 1`, n)
+	}
+	if strings.Contains(body, ">0<") || strings.Contains(body, ">0 B<") {
+		t.Error("an unknown size rendered as a number")
+	}
+	// The same user has the same tag everywhere.
+	if n := strings.Count(body, `<span class="user-code user-code--hue-1" aria-hidden="true">SA</span><span class="user-tag__name">sally</span>`); n != 2 {
+		t.Errorf("sally's tag appears %d times, want 2", n)
+	}
+}
+
+// DESIGN.md §3: nothing marks a row as big, unwatched or otherwise worth
+// deleting. Every row carries exactly the same classes, whatever its data.
+func TestMovieRowsAreStyledTheSameWhateverTheirData(t *testing.T) {
+	h := newTestHandler(t, stubSnapshots{ok: true, snap: library.Snapshot{
+		Users: []library.User{{ID: "s", Name: "sally"}},
+		Movies: []library.Movie{
+			{ID: "1", Title: "Huge Unwatched", Size: 85899345920},
+			{ID: "2", Title: "Small Watched", Size: 1 << 20, CompletedBy: []library.User{{ID: "s", Name: "sally"}}},
+		}}})
+	body := get(t, h, "/movies").Body.String()
+	rows := regexp.MustCompile(`<li class="([^"]*)"`).FindAllStringSubmatch(body, -1)
+	var rowClasses []string
+	for _, m := range rows {
+		if strings.HasPrefix(m[1], "movie-row") {
+			rowClasses = append(rowClasses, m[1])
+		}
+	}
+	if len(rowClasses) != 2 || rowClasses[0] != "movie-row" || rowClasses[1] != "movie-row" {
+		t.Errorf("row classes = %v, want two plain movie-row", rowClasses)
+	}
+	sizes := regexp.MustCompile(`<span class="(size[^"]*)"`).FindAllStringSubmatch(body, -1)
+	for _, m := range sizes {
+		if m[1] != "size" && m[1] != "size__value" && m[1] != "size__unit" {
+			t.Errorf("size styled with %q", m[1])
+		}
+	}
+}

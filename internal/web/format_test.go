@@ -48,3 +48,48 @@ func TestPosterInitial(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatSizeUsesBinaryUnitsAndOneDecimal(t *testing.T) {
+	const kib, mib, gib, tib = 1 << 10, 1 << 20, 1 << 30, 1 << 40
+	for _, c := range []struct {
+		bytes       int64
+		value, unit string
+	}{
+		{146 * gib / 10, "14.6", "GB"},
+		{798 * gib / 10, "79.8", "GB"},
+		{12 * gib, "12.0", "GB"},
+		{gib, "1.0", "GB"},
+		{gib - 1, "1.0", "GB"},              // 1023.99… MB rounds up into the next unit
+		{1000 * 1000 * 1000, "953.7", "MB"}, // a decimal GB is not a GB
+		{194 * tib / 100, "1.9", "TB"},
+		{700 * mib, "700.0", "MB"},
+		{1536, "1.5", "KB"},
+		{512, "512", "B"},
+		{20559445148, "19.1", "GB"}, // a real Jellyfin 12.1.0 file
+		{kib * tib, "1024.0", "TB"}, // TB is the largest unit
+	} {
+		v, u := formatSize(c.bytes)
+		if v != c.value || u != c.unit {
+			t.Errorf("formatSize(%d) = %q %q, want %q %q", c.bytes, v, u, c.value, c.unit)
+		}
+	}
+}
+
+func TestUserCode(t *testing.T) {
+	for name, want := range map[string]string{
+		"Sam":                   "SA",
+		"sally":                 "SA",
+		"Anastasia Kowalczyk":   "AK",
+		"mary jane watson":      "MW",
+		"H":                     "H",
+		"home-tv":               "HO",
+		"  Priya  ":             "PR",
+		"Élodie":                "ÉL",
+		"Christopher-Alexander": "CH",
+		"":                      "",
+	} {
+		if got := userCode(name); got != want {
+			t.Errorf("userCode(%q) = %q, want %q", name, got, want)
+		}
+	}
+}

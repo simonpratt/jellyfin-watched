@@ -11,14 +11,26 @@ import (
 )
 
 type fakeSource struct {
+	users  []jellyfin.User
 	movies []jellyfin.Item
+	played map[string][]string
 	err    error
 	calls  int
+}
+
+func (f *fakeSource) Users(context.Context) ([]jellyfin.User, error) {
+	f.calls++
+	return f.users, f.err
 }
 
 func (f *fakeSource) Movies(context.Context) ([]jellyfin.Item, error) {
 	f.calls++
 	return f.movies, f.err
+}
+
+func (f *fakeSource) PlayedMovieIDs(_ context.Context, userID string) ([]string, error) {
+	f.calls++
+	return f.played[userID], f.err
 }
 
 func TestCacheEmptyUntilRefreshed(t *testing.T) {
@@ -56,8 +68,8 @@ func TestRefreshStoresSnapshot(t *testing.T) {
 	// Reading the snapshot does not touch the source.
 	c.Snapshot()
 	c.Snapshot()
-	if src.calls != 1 {
-		t.Errorf("source called %d times, want 1", src.calls)
+	if src.calls != 2 {
+		t.Errorf("source called %d times, want 2 (users, movies)", src.calls)
 	}
 }
 

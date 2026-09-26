@@ -1,6 +1,7 @@
 package web
 
 import (
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -66,4 +67,46 @@ func posterInitial(title string) string {
 		}
 	}
 	return ""
+}
+
+// sizeUnits are binary: each is 1024 of the one before (1 GB = 1024³ bytes),
+// labelled the way the design writes them.
+var sizeUnits = []string{"B", "KB", "MB", "GB", "TB"}
+
+// formatSize renders a byte count as a value with one decimal and its unit,
+// e.g. "14.6", "GB". Whole bytes have no decimal. The unit is the largest in
+// which the rounded value is at least 1, so 1023.99 MB becomes "1.0" GB.
+func formatSize(bytes int64) (value, unit string) {
+	if bytes < 1024 {
+		return strconv.FormatInt(bytes, 10), sizeUnits[0]
+	}
+	v := float64(bytes)
+	i := 0
+	for i < len(sizeUnits)-1 && math.Round(v*10)/10 >= 1024 {
+		v /= 1024
+		i++
+	}
+	return strconv.FormatFloat(v, 'f', 1, 64), sizeUnits[i]
+}
+
+// userCode is a user's two-letter code: the first two letters of a one-word
+// name ("Sam" → "SA"), or the initials of the first and last words of a
+// longer one ("Anastasia Kowalczyk" → "AK"). A one-letter name gives one
+// letter. Only spaces separate words, so "home-tv" is "HO".
+func userCode(name string) string {
+	words := strings.Fields(name)
+	switch len(words) {
+	case 0:
+		return ""
+	case 1:
+		r := []rune(words[0])
+		if len(r) > 2 {
+			r = r[:2]
+		}
+		return strings.ToUpper(string(r))
+	default:
+		first := []rune(words[0])[0]
+		last := []rune(words[len(words)-1])[0]
+		return strings.ToUpper(string([]rune{first, last}))
+	}
 }

@@ -54,20 +54,105 @@ type Button struct {
 	Primary bool // the accent-filled button, password screen only
 }
 
-// MovieRow is the view model for the movie-row component.
-type MovieRow struct {
-	Title  string
-	Year   string // empty when unknown
-	Added  string // e.g. "Added 14 Feb 2024"; empty when unknown
-	Poster Poster
+// Size is the view model for the size component: "14.6 GB", or "Unknown".
+type Size struct {
+	Value   string // "14.6"
+	Unit    string // "GB"
+	Unknown bool   // Jellyfin reported no size
+	// UnknownCount is how many items a sum left out because their size is
+	// unknown, shown as "+ 2 unknown" under the value.
+	UnknownCount int
 }
 
-func newMovieRow(m library.Movie) MovieRow {
+// newSize builds a single item's size; 0 bytes means Jellyfin reported none.
+func newSize(bytes int64) Size {
+	if bytes <= 0 {
+		return Size{Unknown: true}
+	}
+	v, u := formatSize(bytes)
+	return Size{Value: v, Unit: u}
+}
+
+// UserTag is the view model for the user-tag component: a user's name with
+// their two-letter code on their hue.
+type UserTag struct {
+	Name string
+	Code string // "SA", "AK"; what tells users apart
+	Hue  int    // 1–10, selecting --user-1…--user-10
+}
+
+// userHues is how many --user-N tokens there are; past that, hues wrap.
+const userHues = 10
+
+// newUserTags gives every user their tag, keyed by user ID. Hues follow
+// Jellyfin's /Users order, so a user looks the same everywhere in the app.
+func newUserTags(users []library.User) map[string]UserTag {
+	tags := make(map[string]UserTag, len(users))
+	for i, u := range users {
+		tags[u.ID] = UserTag{Name: u.Name, Code: userCode(u.Name), Hue: i%userHues + 1}
+	}
+	return tags
+}
+
+// groupCollapseAt is the number of users at which a user-group collapses to
+// a stack of codes (Components sheet: "Five or more users, collapsed").
+const groupCollapseAt = 5
+
+// UserGroup is the view model for the user-group component. Collapsed groups
+// show a stack of codes and "All 10 users" / "6 users", expanding to Tags.
+type UserGroup struct {
+	Tags        []UserTag
+	Collapsed   bool
+	CountPrefix string // "All " when the group is every user, else ""
+	Count       string // "6"
+	CountSuffix string // " users"
+}
+
+func newUserGroup(users []library.User, tags map[string]UserTag, totalUsers int) UserGroup {
+	g := UserGroup{Tags: make([]UserTag, 0, len(users))}
+	for _, u := range users {
+		g.Tags = append(g.Tags, tags[u.ID])
+	}
+	if len(users) >= groupCollapseAt {
+		g.Collapsed = true
+		g.Count = formatNumber(len(users))
+		g.CountSuffix = " users"
+		if len(users) == totalUsers {
+			g.CountPrefix = "All "
+		}
+	}
+	return g
+}
+
+// Completion is the view model for the completion component: who has
+// completed an item, or "Not completed by anyone". In-progress users arrive
+// with TV seasons (ticket 06).
+type Completion struct {
+	Completed UserGroup
+}
+
+func newCompletion(completed []library.User, tags map[string]UserTag, totalUsers int) Completion {
+	return Completion{Completed: newUserGroup(completed, tags, totalUsers)}
+}
+
+// MovieRow is the view model for the movie-row component.
+type MovieRow struct {
+	Title      string
+	Year       string // empty when unknown
+	Added      string // e.g. "Added 14 Feb 2024"; empty when unknown
+	Poster     Poster
+	Size       Size
+	Completion Completion
+}
+
+func newMovieRow(m library.Movie, tags map[string]UserTag, totalUsers int) MovieRow {
 	return MovieRow{
-		Title:  m.Title,
-		Year:   formatYear(m.Year),
-		Added:  formatAdded(m.Added),
-		Poster: Poster{Title: m.Title, Initial: posterInitial(m.Title)},
+		Title:      m.Title,
+		Year:       formatYear(m.Year),
+		Added:      formatAdded(m.Added),
+		Poster:     Poster{Title: m.Title, Initial: posterInitial(m.Title)},
+		Size:       newSize(m.Size),
+		Completion: newCompletion(m.CompletedBy, tags, totalUsers),
 	}
 }
 
@@ -77,9 +162,10 @@ func newMoviesPage(snap library.Snapshot, loaded bool) MoviesPage {
 		return p
 	}
 	p.Summary = formatCount(len(snap.Movies), "movie", "movies")
+	tags := newUserTags(snap.Users)
 	p.Movies = make([]MovieRow, 0, len(snap.Movies))
 	for _, m := range snap.Movies {
-		p.Movies = append(p.Movies, newMovieRow(m))
+		p.Movies = append(p.Movies, newMovieRow(m, tags, len(snap.Users)))
 	}
 	return p
 }
