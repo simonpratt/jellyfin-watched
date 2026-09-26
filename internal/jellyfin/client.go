@@ -1,6 +1,6 @@
 // Package jellyfin is a read-only client for the Jellyfin HTTP API.
 //
-// The client's only request primitive is Get: it cannot send POST, PUT or
+// The client's only request primitive is get: it cannot send POST, PUT or
 // DELETE (REQUIREMENTS.md §9.1). The API key is sent in the Authorization
 // header only, never in a URL, and never appears in returned errors.
 package jellyfin
@@ -43,33 +43,50 @@ func New(baseURL, apiKey string, timeout time.Duration) (*Client, error) {
 }
 
 // Get sends GET path?query to Jellyfin and decodes the JSON response into out.
+// path must already be escaped.
 func (c *Client) Get(ctx context.Context, path string, query url.Values, out any) error {
-	u := *c.base
-	u.Path = strings.TrimRight(c.base.Path, "/") + path
-	u.RawQuery = query.Encode()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	resp, err := c.get(ctx, path, query, "application/json")
 	if err != nil {
-		return fmt.Errorf("jellyfin: GET %s: %w", path, err)
-	}
-	req.Header.Set("Authorization", "MediaBrowser Token="+c.apiKey)
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		// url.Error includes the URL, which never contains the key.
-		return fmt.Errorf("jellyfin: GET %s: %w", path, err)
+		return err
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
-		return fmt.Errorf("jellyfin: GET %s: unexpected status %s", path, resp.Status)
-	}
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 		return fmt.Errorf("jellyfin: GET %s: decoding response: %w", path, err)
 	}
 	return nil
+}
+
+// get is the client's only request primitive, and it can only send GET. It
+// returns the response if the status is 200 OK, and the caller closes its
+// body. path is an escaped path such as "/Items/abc/Images/Primary".
+func (c *Client) get(ctx context.Context, path string, query url.Values, accept string) (*http.Response, error) {
+	u := *c.base
+	u.RawPath = strings.TrimRight(c.base.EscapedPath(), "/") + path
+	unescaped, err := url.PathUnescape(u.RawPath)
+	if err != nil {
+		return nil, fmt.Errorf("jellyfin: GET %s: %w", path, err)
+	}
+	u.Path = unescaped
+	u.RawQuery = query.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("jellyfin: GET %s: %w", path, err)
+	}
+	req.Header.Set("Authorization", "MediaBrowser Token="+c.apiKey)
+	req.Header.Set("Accept", accept)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		// url.Error includes the URL, which never contains the key.
+		return nil, fmt.Errorf("jellyfin: GET %s: %w", path, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+		resp.Body.Close()
+		return nil, fmt.Errorf("jellyfin: GET %s: unexpected status %s", path, resp.Status)
+	}
+	return resp, nil
 }
 
 // Item is the subset of Jellyfin's BaseItemDto the dashboard uses.
@@ -82,10 +99,18 @@ type Item struct {
 	// against Jellyfin 12.1.0: it is only returned when the request asks for
 	// fields=DateCreated, formatted like "2026-04-05T21:22:25.7865705Z".
 	DateCreated time.Time `json:"DateCreated,omitzero"`
+	// ImageTags maps an image type ("Primary", "Logo", …) to a tag that
+	// changes whenever that image does. Confirmed against Jellyfin 12.1.0:
+	// /Items returns it without asking for any fields, and an item with no
+	// poster has no "Primary" key.
+	ImageTags map[string]string `json:"ImageTags,omitempty"`
 	// MediaSources lists the item's versions (e.g. 1080p and 4K). Only
 	// returned when the request asks for fields=MediaSources.
 	MediaSources []MediaSource `json:"MediaSources,omitempty"`
 }
+
+// PrimaryImageTag is the tag of the item's poster, or "" if it has none.
+func (it Item) PrimaryImageTag() string { return it.ImageTags["Primary"] }
 
 // MediaSource is one version of an item.
 //
@@ -183,4 +208,45 @@ func (c *Client) PlayedMovieIDs(ctx context.Context, userID string) ([]string, e
 		ids[i] = it.ID
 	}
 	return ids, nil
+}
+
+// maxImageBytes caps a poster download. A 96×144 poster is 5–15 KB.
+const maxImageBytes = 4 << 20
+
+// Image is an image downloaded from Jellyfin.
+type Image struct {
+	Data        []byte
+	ContentType string // e.g. "image/webp"
+}
+
+// PrimaryImage downloads an item's poster, scaled to fill about 96×144:
+// twice the 48×72 slot, for high-density screens.
+//
+// Confirmed against Jellyfin 12.1.0 (not yet checked on 10.10 or 10.11):
+// GET /Items/{id}/Images/Primary returns the image bytes. fillWidth and
+// fillHeight scale to about 96×144 (some come back 97×144 or 96×145; the
+// page crops to fill) at ~6 KB, against ~500 KB unscaled. The
+// response format follows Accept ("Vary: Accept"): image/webp when offered,
+// otherwise image/jpeg. An item with no poster answers 404, and a malformed
+// ID 400.
+func (c *Client) PrimaryImage(ctx context.Context, itemID string) (Image, error) {
+	path := "/Items/" + url.PathEscape(itemID) + "/Images/Primary"
+	q := url.Values{"fillWidth": {"96"}, "fillHeight": {"144"}, "quality": {"90"}}
+	resp, err := c.get(ctx, path, q, "image/webp,image/jpeg;q=0.9")
+	if err != nil {
+		return Image{}, err
+	}
+	defer resp.Body.Close()
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "image/") {
+		return Image{}, fmt.Errorf("jellyfin: GET %s: not an image (Content-Type %q)", path, ct)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxImageBytes+1))
+	if err != nil {
+		return Image{}, fmt.Errorf("jellyfin: GET %s: reading image: %w", path, err)
+	}
+	if len(data) > maxImageBytes {
+		return Image{}, fmt.Errorf("jellyfin: GET %s: image larger than %d bytes", path, maxImageBytes)
+	}
+	return Image{Data: data, ContentType: ct}, nil
 }

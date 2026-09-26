@@ -25,6 +25,9 @@ type Movie struct {
 	// Size is the total bytes of every version of the movie, or 0 when
 	// Jellyfin doesn't report a size for all of them.
 	Size int64
+	// PosterTag identifies the current version of the movie's poster in
+	// Jellyfin; "" when it has none.
+	PosterTag string
 	// CompletedBy is the users Jellyfin reports as having played the movie
 	// (UserData.Played), in Snapshot.Users order; nil when nobody has.
 	CompletedBy []User
@@ -35,6 +38,18 @@ type Snapshot struct {
 	Users    []User // in Jellyfin's /Users order
 	Movies   []Movie
 	LoadedAt time.Time
+}
+
+// PosterTag returns the poster tag of the item with this ID, and false if
+// the item isn't in the snapshot or has no poster. It is how the dashboard
+// limits poster requests to items it knows about.
+func (s Snapshot) PosterTag(id string) (string, bool) {
+	for _, m := range s.Movies {
+		if m.ID == id {
+			return m.PosterTag, m.PosterTag != ""
+		}
+	}
+	return "", false
 }
 
 // Source is where the cache gets its data; *jellyfin.Client satisfies it.
@@ -84,7 +99,7 @@ func (c *Cache) Refresh(ctx context.Context) error {
 	movies := make([]Movie, len(items))
 	index := make(map[string]int, len(items))
 	for i, it := range items {
-		movies[i] = Movie{ID: it.ID, Title: it.Name, Year: it.ProductionYear, Added: it.DateCreated, Size: totalSize(it.MediaSources)}
+		movies[i] = Movie{ID: it.ID, Title: it.Name, Year: it.ProductionYear, Added: it.DateCreated, Size: totalSize(it.MediaSources), PosterTag: it.PrimaryImageTag()}
 		index[it.ID] = i
 	}
 	// Users are visited in /Users order, so each CompletedBy ends up in it too.

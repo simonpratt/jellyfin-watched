@@ -1,6 +1,10 @@
 package web
 
-import "jellyfin-watched/internal/library"
+import (
+	"net/url"
+
+	"jellyfin-watched/internal/library"
+)
 
 // Page is what the layout needs from every page: the document title and the
 // header's tabs.
@@ -41,11 +45,27 @@ type TVPage struct {
 	Page
 }
 
-// Poster is the view model for the poster component. Until cover art arrives
-// (ticket 05) every poster is the generated placeholder.
+// Poster is the view model for the poster component: an image when Src is
+// set, the missing-poster box when Missing, otherwise the generated
+// placeholder showing Initial.
 type Poster struct {
-	Title   string // alt text once the poster is an image
-	Initial string // may be empty, leaving a plain block
+	Title   string // the image's alt text
+	Src     string // the dashboard's poster URL, e.g. "/posters/{id}/{tag}"
+	Missing bool   // Jellyfin has no poster for the item
+	Initial string // placeholder only; may be empty, leaving a plain block
+}
+
+// posterPath is where the dashboard serves posters.
+const posterPath = "/posters/"
+
+// newPoster builds an item's poster. tag is its Jellyfin poster tag, "" when
+// it has none. The URL points at the dashboard, never at Jellyfin, and
+// includes the tag so that a changed poster gets a new URL.
+func newPoster(id, title, tag string) Poster {
+	if tag == "" {
+		return Poster{Title: title, Missing: true}
+	}
+	return Poster{Title: title, Src: posterPath + url.PathEscape(id) + "/" + url.PathEscape(tag)}
 }
 
 // Button is the view model for the button component.
@@ -150,7 +170,7 @@ func newMovieRow(m library.Movie, tags map[string]UserTag, totalUsers int) Movie
 		Title:      m.Title,
 		Year:       formatYear(m.Year),
 		Added:      formatAdded(m.Added),
-		Poster:     Poster{Title: m.Title, Initial: posterInitial(m.Title)},
+		Poster:     newPoster(m.ID, m.Title, m.PosterTag),
 		Size:       newSize(m.Size),
 		Completion: newCompletion(m.CompletedBy, tags, totalUsers),
 	}

@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"jellyfin-watched/internal/artwork"
 	"jellyfin-watched/internal/config"
 	"jellyfin-watched/internal/jellyfin"
 	"jellyfin-watched/internal/library"
@@ -47,7 +48,7 @@ func run(ctx context.Context, getenv func(string) string, logOut io.Writer, onLi
 	}
 	cache := library.NewCache(client)
 
-	handler, err := web.NewHandler(cache, logger)
+	handler, err := web.NewHandler(cache, artwork.New(client), logger)
 	if err != nil {
 		return err
 	}

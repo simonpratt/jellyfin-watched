@@ -54,6 +54,7 @@ const threeUsers = `[
 
 const fourMovies = `{"Items":[
  {"Name":"Two Versions","Id":"m-two","Type":"Movie","ProductionYear":2019,
+  "ImageTags":{"Primary":"tag-two","Logo":"logo"},"BackdropImageTags":["bd"],
   "MediaSources":[{"Id":"m-two","Size":16106127360,"Name":"1080p"},{"Id":"alt","Size":69793218560,"Name":"2160p"}]},
  {"Name":"No Size","Id":"m-nosize","Type":"Movie","MediaSources":[{"Id":"m-nosize","Name":"x"}]},
  {"Name":"One Version Unreported","Id":"m-partial","Type":"Movie",
@@ -131,6 +132,32 @@ func TestRefreshWithNoUsers(t *testing.T) {
 	for _, m := range snap.Movies {
 		if len(m.CompletedBy) != 0 {
 			t.Errorf("%s completed by %+v", m.Title, m.CompletedBy)
+		}
+	}
+}
+
+func TestRefreshKeepsPosterTags(t *testing.T) {
+	cache := NewCache(fakeServer(t, `[]`, fourMovies, nil))
+	if err := cache.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	snap, _ := cache.Snapshot()
+	for _, m := range snap.Movies {
+		want := ""
+		if m.ID == "m-two" {
+			want = "tag-two"
+		}
+		if m.PosterTag != want {
+			t.Errorf("%s PosterTag = %q, want %q", m.ID, m.PosterTag, want)
+		}
+	}
+	if tag, ok := snap.PosterTag("m-two"); !ok || tag != "tag-two" {
+		t.Errorf(`PosterTag("m-two") = %q, %v`, tag, ok)
+	}
+	// Items with no poster, and IDs not in the library, have none.
+	for _, id := range []string{"m-nosize", "not-in-library", ""} {
+		if tag, ok := snap.PosterTag(id); ok {
+			t.Errorf("PosterTag(%q) = %q, true", id, tag)
 		}
 	}
 }

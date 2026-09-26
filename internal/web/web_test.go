@@ -1,12 +1,16 @@
 package web
 
 import (
+	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,9 +24,31 @@ type stubSnapshots struct {
 
 func (s stubSnapshots) Snapshot() (library.Snapshot, bool) { return s.snap, s.ok }
 
+// stubPosters serves a fixed image for every poster and records requests.
+type stubPosters struct {
+	mu    sync.Mutex
+	calls []string // "id/tag"
+	err   error
+}
+
+func (p *stubPosters) Poster(_ context.Context, id, tag string) ([]byte, string, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.calls = append(p.calls, id+"/"+tag)
+	if p.err != nil {
+		return nil, "", p.err
+	}
+	return []byte("RIFF-webp-" + id), "image/webp", nil
+}
+
 func newTestHandler(t *testing.T, s Snapshots) http.Handler {
 	t.Helper()
-	h, err := NewHandler(s, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return newTestHandlerWithPosters(t, s, &stubPosters{})
+}
+
+func newTestHandlerWithPosters(t *testing.T, s Snapshots, p Posters) http.Handler {
+	t.Helper()
+	h, err := NewHandler(s, p, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,9 +161,9 @@ func TestMovieRowShowsYearAndAddedDate(t *testing.T) {
 	if strings.Count(body, "movie-row__added") != 1 {
 		t.Error("a movie with no added date still shows an added date")
 	}
-	// Every row has a poster slot, a placeholder until cover art arrives.
-	if n := strings.Count(body, `class="poster poster--placeholder"`); n != 2 {
-		t.Errorf("%d placeholder posters, want 2", n)
+	// Neither movie has a poster in Jellyfin, so both show the missing one.
+	if n := strings.Count(body, `class="poster poster--missing"`); n != 2 {
+		t.Errorf("%d missing posters, want 2", n)
 	}
 }
 
@@ -306,5 +332,97 @@ func TestMovieRowsAreStyledTheSameWhateverTheirData(t *testing.T) {
 		if m[1] != "size" && m[1] != "size__value" && m[1] != "size__unit" {
 			t.Errorf("size styled with %q", m[1])
 		}
+	}
+}
+
+var posterSnap = stubSnapshots{ok: true, snap: library.Snapshot{Movies: []library.Movie{
+	{ID: "a1", Title: "Dr. Strangelove or: How I Learned to Stop Worrying & Love the Bomb", PosterTag: "t1"},
+	{ID: "b2", Title: "Columbus"},
+}}}
+
+// Rows with a poster get a lazy <img> in the fixed 48×72 slot, pointing at
+// the dashboard (never at Jellyfin), with the title as alt text.
+func TestMovieRowPosterImage(t *testing.T) {
+	body := get(t, newTestHandler(t, posterSnap), "/movies").Body.String()
+	want := `<div class="poster"><img class="poster__image" src="/posters/a1/t1" alt="Dr. Strangelove or: How I Learned to Stop Worrying &amp; Love the Bomb" width="48" height="72" loading="lazy" decoding="async"></div>`
+	if !strings.Contains(body, want) {
+		t.Errorf("page missing %s", want)
+	}
+	// No poster in Jellyfin: the designed missing-poster box, not an image.
+	if n := strings.Count(body, `<div class="poster poster--missing" aria-hidden="true">`); n != 1 {
+		t.Errorf("%d missing posters, want 1", n)
+	}
+	if n := strings.Count(body, "<img"); n != 1 {
+		t.Errorf("%d <img> tags, want 1", n)
+	}
+}
+
+func TestPosterRouteServesCachedImage(t *testing.T) {
+	p := &stubPosters{}
+	h := newTestHandlerWithPosters(t, posterSnap, p)
+	rec := get(t, h, "/posters/a1/t1")
+	if rec.Code != http.StatusOK || rec.Body.String() != "RIFF-webp-a1" {
+		t.Fatalf("status %d body %q", rec.Code, rec.Body)
+	}
+	want := http.Header{
+		"Content-Type":           {"image/webp"},
+		"Content-Length":         {"12"},
+		"Cache-Control":          {"public, max-age=31536000, immutable"},
+		"X-Content-Type-Options": {"nosniff"},
+	}
+	if !reflect.DeepEqual(rec.Header(), want) {
+		t.Errorf("headers = %v, want %v", rec.Header(), want)
+	}
+	if !reflect.DeepEqual(p.calls, []string{"a1/t1"}) {
+		t.Errorf("Poster calls = %v", p.calls)
+	}
+}
+
+// A URL with an old tag (a page rendered before a refresh) still gets the
+// current poster, but the browser mustn't keep it forever under that URL.
+func TestPosterRouteStaleTagServesCurrentPoster(t *testing.T) {
+	p := &stubPosters{}
+	rec := get(t, newTestHandlerWithPosters(t, posterSnap, p), "/posters/a1/old")
+	if rec.Code != http.StatusOK || rec.Header().Get("Cache-Control") != "no-cache" {
+		t.Errorf("status %d Cache-Control %q", rec.Code, rec.Header().Get("Cache-Control"))
+	}
+	if !reflect.DeepEqual(p.calls, []string{"a1/t1"}) {
+		t.Errorf("Poster calls = %v", p.calls)
+	}
+}
+
+// The route only serves posters of items in the library snapshot; it can't
+// be used to make the dashboard fetch anything else from Jellyfin.
+func TestPosterRouteOnlyServesKnownItems(t *testing.T) {
+	p := &stubPosters{}
+	h := newTestHandlerWithPosters(t, posterSnap, p)
+	for _, path := range []string{
+		"/posters/b2/x",          // in the library, but has no poster
+		"/posters/zz/t1",         // not in the library
+		"/posters/..%2FUsers/t1", // path tricks
+		"/posters/a1%2F..%2F..%2FUsers/t1",
+		"/posters/a1",
+		"/posters/a1/t1/extra",
+	} {
+		if rec := get(t, h, path); rec.Code != http.StatusNotFound {
+			t.Errorf("GET %s: status %d, want 404", path, rec.Code)
+		}
+	}
+	if rec := get(t, newTestHandlerWithPosters(t, stubSnapshots{}, p), "/posters/a1/t1"); rec.Code != http.StatusNotFound {
+		t.Errorf("before first load: status %d, want 404", rec.Code)
+	}
+	if len(p.calls) != 0 {
+		t.Errorf("fetched posters for unknown items: %v", p.calls)
+	}
+}
+
+func TestPosterRouteFetchFailure(t *testing.T) {
+	p := &stubPosters{err: errors.New("jellyfin: GET /Items/a1/Images/Primary: unexpected status 500")}
+	rec := get(t, newTestHandlerWithPosters(t, posterSnap, p), "/posters/a1/t1")
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status %d, want 502", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "jellyfin") {
+		t.Errorf("body exposes the upstream error: %q", rec.Body)
 	}
 }

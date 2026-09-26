@@ -16,6 +16,8 @@ import (
 
 const testKey = "k3y-that-must-never-leak-8f2a"
 
+const posterBytes = "\xff\xd8\xff\xe0 a poster"
+
 // fakeJellyfin mimics the parts of the Jellyfin API the app uses, records
 // every request, and rejects requests without the right key.
 type fakeJellyfin struct {
@@ -32,6 +34,16 @@ func (f *fakeJellyfin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
+	if r.URL.Path == "/Items/1/Images/Primary" {
+		// Headers a proxy mustn't pass on, one of them carrying the key, to
+		// prove the dashboard builds its own response.
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Set-Cookie", "session="+testKey)
+		w.Header().Set("X-Echo-Token", testKey)
+		w.Header().Set("Content-Disposition", "attachment")
+		_, _ = w.Write([]byte(posterBytes))
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	if r.URL.Path == "/Users" {
 		_ = json.NewEncoder(w).Encode([]map[string]any{
@@ -42,6 +54,7 @@ func (f *fakeJellyfin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	items := []map[string]any{
 		{"Id": "1", "Name": "Alien", "Type": "Movie", "ProductionYear": 1979,
+			"ImageTags":    map[string]string{"Primary": "tag1"},
 			"MediaSources": []map[string]any{{"Id": "1", "Size": 15676630630}}},
 		{"Id": "2", "Name": "Dr. Strangelove", "Type": "Movie", "ProductionYear": 1964,
 			"MediaSources": []map[string]any{{"Id": "2"}}},
@@ -191,6 +204,80 @@ func TestAppServesMoviesFromJellyfinWithGETOnly(t *testing.T) {
 	}
 	if !strings.Contains(logs.String(), "library loaded") {
 		t.Errorf("logs missing load message:\n%s", logs)
+	}
+}
+
+// Posters come from Jellyfin through the dashboard: the browser gets the
+// image bytes and the dashboard's own headers, never the key, and repeat
+// views are served from the cache.
+func TestAppServesPostersWithoutKey(t *testing.T) {
+	fake := &fakeJellyfin{}
+	base, logs, stop := startApp(t, fake)
+	page := waitFor(t, base+"/movies", "Dr. Strangelove")
+	if !strings.Contains(page, `src="/posters/1/tag1" alt="Alien"`) {
+		t.Fatalf("page has no poster for Alien:\n%s", page)
+	}
+
+	var responses []*http.Response
+	var bodies []string
+	for i := 0; i < 3; i++ {
+		resp, err := http.Get(base + "/posters/1/tag1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		responses = append(responses, resp)
+		bodies = append(bodies, string(b))
+	}
+	// Dr. Strangelove has no poster, and item 3 isn't in the library.
+	for _, p := range []string{"/posters/2/anything", "/posters/3/x"} {
+		resp, err := http.Get(base + p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("GET %s: status %d, want 404", p, resp.StatusCode)
+		}
+	}
+	stop()
+
+	for i, resp := range responses {
+		if resp.StatusCode != http.StatusOK || bodies[i] != posterBytes {
+			t.Fatalf("poster %d: status %d body %q", i, resp.StatusCode, bodies[i])
+		}
+		var headers strings.Builder
+		_ = resp.Header.Write(&headers)
+		if strings.Contains(headers.String(), testKey) || strings.Contains(bodies[i], testKey) {
+			t.Errorf("API key in poster response:\n%s", headers.String())
+		}
+		for _, h := range []string{"Set-Cookie", "X-Echo-Token", "Content-Disposition"} {
+			if resp.Header.Get(h) != "" {
+				t.Errorf("Jellyfin header %s passed through", h)
+			}
+		}
+		if resp.Header.Get("Content-Type") != "image/jpeg" {
+			t.Errorf("Content-Type = %q", resp.Header.Get("Content-Type"))
+		}
+	}
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	fetched := 0
+	for _, m := range fake.methods {
+		if strings.Contains(m, "/Images/") {
+			fetched++
+			if m != "GET /Items/1/Images/Primary" {
+				t.Errorf("unexpected image request %s", m)
+			}
+		}
+	}
+	if fetched != 1 {
+		t.Errorf("Jellyfin served the poster %d times, want 1 (then cached)", fetched)
+	}
+	if strings.Contains(logs.String(), testKey) {
+		t.Errorf("API key in logs:\n%s", logs)
 	}
 }
 

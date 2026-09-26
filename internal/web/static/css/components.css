@@ -438,7 +438,13 @@ a {
 }
 
 /* --------------------------------------------------------------- poster */
-/* Fixed 48×72 slot. --placeholder: the title's initial on a plain block. */
+/* Fixed 48×72 (2:3) slot, the same for every variant so rows never shift.
+   The plain block behind an image is its loading state (States sheet, "Image
+   loading"). __image: the cover, cropped to fill; if it fails to load, its
+   alt text is transparent and ::after hides the broken-image mark, leaving
+   the plain block. --missing: no poster in Jellyfin, a dashed strong
+   hairline around an image-off mark.
+   --placeholder: the title's initial on a plain block. */
 
 .poster {
   position: relative;
@@ -448,6 +454,37 @@ a {
   overflow: hidden;
   border-radius: var(--radius-xs);
   background: var(--bg-hover);
+}
+
+.poster__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  object-fit: cover;
+  color: transparent;
+}
+
+/* Browsers only draw an image's ::after when it failed to load; it covers
+   the broken-image mark with the plain block. */
+.poster__image::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--bg-hover);
+}
+
+.poster--missing {
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--line-strong);
+  background: transparent;
+  color: var(--text-3);
+}
+
+.poster__missing-mark {
+  width: var(--space-3);
+  height: var(--space-3);
 }
 
 .poster__initial {

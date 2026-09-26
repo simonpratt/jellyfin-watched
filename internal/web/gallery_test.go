@@ -2,6 +2,9 @@ package web
 
 import (
 	"bytes"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -34,7 +37,7 @@ const galleryTmpl = `{{define "gallery"}}<!doctype html>
 <div class="gallery">
 <section><h2 class="gallery__label">Header · movies current</h2>{{template "app-header" .HeaderMovies}}</section>
 <section><h2 class="gallery__label">Header · TV shows current, before first load</h2>{{template "app-header" .HeaderTV}}</section>
-<section><h2 class="gallery__label">Poster · placeholder</h2><div class="gallery__row">{{range .Posters}}{{template "poster" .}}{{end}}</div></section>
+<section><h2 class="gallery__label">Poster · image, image that failed or is still loading, missing, generated placeholder</h2><div class="gallery__row">{{range .Posters}}{{template "poster" .}}{{end}}</div></section>
 <section><h2 class="gallery__label">Button · default, primary</h2><div class="gallery__row">{{range .Buttons}}{{template "button" .}}{{end}}</div></section>
 <section><h2 class="gallery__label">User tag · all 10 users, then user 11 wrapping to hue 1</h2><div class="gallery__row">{{range .Tags}}{{template "user-tag" .}}{{end}}</div></section>
 <section><h2 class="gallery__label">Size · movie, 4K remux, series total, unknown, sum with unknowns</h2><div class="gallery__sizes">{{range .Sizes}}<div>{{template "size" .}}</div>{{end}}</div></section>
@@ -93,10 +96,34 @@ func TestGallery(t *testing.T) {
 		HeaderTV:     newPage("TV shows", "tv", library.Snapshot{}, false),
 		Buttons:      []Button{{Label: "Clear search"}, {Label: "Open dashboard", Primary: true}},
 	}
-	for _, m := range movies {
+	// Every movie but one has a poster; the rows point at generated stand-in
+	// images written next to the gallery, not at /posters/.
+	posterDir := filepath.Join("..", "..", "tmp", "gallery-posters")
+	if err := os.MkdirAll(posterDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	missing := 5 // "No year, no added date, unknown size"
+	for i, m := range movies {
+		m.ID = "m" + strconv.Itoa(i)
+		if i != missing {
+			m.PosterTag = "t"
+		}
 		row := newMovieRow(m, tags, len(ten))
+		if !strings.HasPrefix(row.Poster.Src, "/posters/"+m.ID+"/t") && i != missing {
+			t.Errorf("%s: poster Src = %q", m.Title, row.Poster.Src)
+		}
+		if row.Poster.Src != "" {
+			name := m.ID + ".png"
+			writeStandInPoster(t, filepath.Join(posterDir, name), i)
+			row.Poster.Src = "gallery-posters/" + name
+		}
 		g.Rows = append(g.Rows, row)
-		g.Posters = append(g.Posters, row.Poster)
+	}
+	g.Posters = []Poster{
+		g.Rows[0].Poster,
+		{Title: "Never loads", Src: "gallery-posters/does-not-exist.png"},
+		g.Rows[missing].Poster,
+		{Title: "Alien", Initial: posterInitial("Alien")},
 	}
 	for _, u := range users {
 		g.Tags = append(g.Tags, tags[u.ID])
@@ -130,7 +157,8 @@ func TestGallery(t *testing.T) {
 	}
 	for _, want := range []string{"Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb", "button--primary", "1,284",
 		"Christopher Albrecht", "Unknown", "+ 2 unknown", "Not completed by anyone", `All <span class="user-group__count">10</span> users`,
-		`<span class="user-group__count">6</span> users`, "user-code--hue-10"} {
+		`<span class="user-group__count">6</span> users`, "user-code--hue-10",
+		`class="poster poster--missing"`, `alt="Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb"`, `loading="lazy"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("gallery missing %q", want)
 		}
@@ -141,6 +169,27 @@ func TestGallery(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte(out), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// writeStandInPoster writes a 96×144 PNG with a vertical gradient, standing
+// in for a Jellyfin poster in the gallery.
+func writeStandInPoster(t *testing.T, path string, n int) {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, 96, 144))
+	r, g, b := uint8(40+n*30%120), uint8(60+n*50%100), uint8(90+n*70%130)
+	for y := 0; y < 144; y++ {
+		for x := 0; x < 96; x++ {
+			k := 144 - y/2
+			img.Set(x, y, color.RGBA{uint8(int(r) * k / 144), uint8(int(g) * k / 144), uint8(int(b) * k / 144), 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

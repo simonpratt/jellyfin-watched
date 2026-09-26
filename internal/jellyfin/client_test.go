@@ -185,9 +185,9 @@ func TestErrorsDoNotContainAPIKey(t *testing.T) {
 }
 
 // The read-only guarantee (REQUIREMENTS.md §9.1): the client has no way to
-// send anything but GET. Its only request primitive is Get; every other
-// exported method is a typed query built on it. Adding a method here means
-// checking it goes through Get.
+// send anything but GET. Its only request primitive is the unexported get,
+// which hard-codes GET; every exported method is built on it. Adding a method
+// here means checking it goes through get.
 func TestClientExposesOnlyGET(t *testing.T) {
 	typ := reflect.TypeOf(&Client{})
 	var names []string
@@ -195,7 +195,7 @@ func TestClientExposesOnlyGET(t *testing.T) {
 		names = append(names, typ.Method(i).Name)
 	}
 	sort.Strings(names)
-	want := []string{"Get", "Movies", "PlayedMovieIDs", "Users"}
+	want := []string{"Get", "Movies", "PlayedMovieIDs", "PrimaryImage", "Users"}
 	if !reflect.DeepEqual(names, want) {
 		t.Errorf("Client methods = %v, want %v", names, want)
 	}
@@ -268,5 +268,103 @@ func TestItemDecodesMediaSourceSizes(t *testing.T) {
 	}
 	if len(it.MediaSources) != 3 || it.MediaSources[0].Size != 20559445148 || it.MediaSources[1].Size != 1024 || it.MediaSources[2].Size != 0 {
 		t.Errorf("MediaSources = %+v", it.MediaSources)
+	}
+}
+
+// Confirmed against Jellyfin 12.1.0: items carry ImageTags by default, a map
+// from image type to a tag that changes whenever the image does. An item with
+// no poster has no "Primary" key.
+func TestItemDecodesPrimaryImageTag(t *testing.T) {
+	var it Item
+	body := `{"Id":"x","ImageTags":{"Primary":"7916c0cf17fa49b8873fbaf2793afd27","Logo":"087a"},"BackdropImageTags":["b"]}`
+	if err := json.Unmarshal([]byte(body), &it); err != nil {
+		t.Fatal(err)
+	}
+	if got := it.PrimaryImageTag(); got != "7916c0cf17fa49b8873fbaf2793afd27" {
+		t.Errorf("PrimaryImageTag = %q", got)
+	}
+	if err := json.Unmarshal([]byte(`{"Id":"y","ImageTags":{"Logo":"a"}}`), &it); err != nil {
+		t.Fatal(err)
+	}
+	if got := (Item{}).PrimaryImageTag(); got != "" {
+		t.Errorf("no ImageTags: PrimaryImageTag = %q", got)
+	}
+}
+
+// posterServer serves /Items/{id}/Images/Primary like Jellyfin 12.1.0 and
+// records each request.
+func posterServer(t *testing.T, handler http.HandlerFunc) (*Client, *[]*http.Request) {
+	t.Helper()
+	var mu sync.Mutex
+	var reqs []*http.Request
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		reqs = append(reqs, r.Clone(context.Background()))
+		mu.Unlock()
+		handler(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	c, err := New(srv.URL, testKey, 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c, &reqs
+}
+
+func TestPrimaryImageFetchesSizedPosterWithGET(t *testing.T) {
+	jpeg := []byte("\xff\xd8\xff\xe0 fake jpeg")
+	c, reqs := posterServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/Items/abc123/Images/Primary" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Content-Disposition", "attachment")
+		_, _ = w.Write(jpeg)
+	})
+	img, err := c.PrimaryImage(context.Background(), "abc123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(img.Data) != string(jpeg) || img.ContentType != "image/jpeg" {
+		t.Errorf("image = %q %q", img.ContentType, img.Data)
+	}
+	r := (*reqs)[0]
+	if r.Method != http.MethodGet || r.Header.Get("Authorization") != "MediaBrowser Token="+testKey {
+		t.Errorf("request = %s, Authorization %q", r.Method, r.Header.Get("Authorization"))
+	}
+	if strings.Contains(r.URL.String(), testKey) {
+		t.Errorf("API key sent in URL: %s", r.URL)
+	}
+	// Twice the 48×72 slot, for high-density screens.
+	q := r.URL.Query()
+	if q.Get("fillWidth") != "96" || q.Get("fillHeight") != "144" {
+		t.Errorf("query = %s", r.URL.RawQuery)
+	}
+}
+
+func TestPrimaryImageErrors(t *testing.T) {
+	for name, h := range map[string]http.HandlerFunc{
+		"404": func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) },
+		"not an image": func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte("<html>" + testKey))
+		},
+	} {
+		c, _ := posterServer(t, h)
+		_, err := c.PrimaryImage(context.Background(), "abc")
+		if err == nil {
+			t.Errorf("%s: want error", name)
+			continue
+		}
+		if strings.Contains(err.Error(), testKey) {
+			t.Errorf("%s: error leaks key: %v", name, err)
+		}
+	}
+	// IDs are escaped, so an ID can't reach another endpoint.
+	c, reqs := posterServer(t, func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
+	_, _ = c.PrimaryImage(context.Background(), "../../Users")
+	if got := (*reqs)[0].URL.EscapedPath(); got != "/Items/..%2F..%2FUsers/Images/Primary" {
+		t.Errorf("path = %s", got)
 	}
 }
