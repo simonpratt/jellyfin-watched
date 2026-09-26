@@ -35,6 +35,7 @@ const galleryTmpl = `{{define "gallery"}}<!doctype html>
 .gallery__wide .notice { margin: 0; }
 .gallery__refresh { position: relative; overflow-x: clip; padding-bottom: var(--space-2); }
 .gallery__tools { justify-content: flex-start; }
+.gallery__password { justify-items: stretch; grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(9 * var(--space-10))), 1fr)); gap: var(--space-10); align-items: start; }
 .gallery__panel { border: 1px solid var(--line); border-radius: var(--radius-lg); margin-bottom: var(--space-4); }
 </style>
 </head>
@@ -56,6 +57,7 @@ const galleryTmpl = `{{define "gallery"}}<!doctype html>
 <section><h2 class="gallery__label">User tag · in progress: 9 / 12, 1 / 200, 20-character name, 1,199 / 1,200</h2><div class="gallery__row">{{range .ProgressTags}}{{template "user-tag" .}}{{end}}</div></section>
 <section><h2 class="gallery__label">Completion · nobody; completed then in progress; in progress only</h2><div class="gallery__stack">{{template "completion" .Nobody}}{{range .Completions}}{{template "completion" .}}{{end}}</div></section>
 <section><h2 class="gallery__label">Movie row</h2><ul class="movie-list">{{range .Rows}}{{template "movie-row" .}}{{end}}</ul></section>
+<section><h2 class="gallery__label">Password form · empty, wrong password, too many attempts</h2><div class="gallery__stack gallery__password">{{range .PasswordForms}}{{template "password-form" .}}{{end}}</div></section>
 <section><h2 class="gallery__label">Series row · expanded, all 10 users, collapsed with 35 seasons, unknown sizes and nobody, missing poster with no seasons</h2><ul class="series-list">{{range .SeriesRows}}{{template "series-row" .}}{{end}}</ul></section>
 </div>
 </body>
@@ -82,6 +84,7 @@ type gallery struct {
 	Sorts                  []SortControl
 	Controls               *ListControls
 	ExpandAll              Button
+	PasswordForms          []PasswordForm
 }
 
 // TestGallery renders every component with edge-case fixtures and writes
@@ -233,6 +236,10 @@ func TestGallery(t *testing.T) {
 	g.Controls = newListControls("/tv", library.View{Search: "hunter", Sort: library.SortYear}, "")
 	g.ExpandAll = Button{Label: "Expand all", Icon: "expand-all"}
 
+	for _, msg := range []string{"", wrongPassword, tooManyPassword} {
+		g.PasswordForms = append(g.PasswordForms, newPasswordPage("/tv", msg).Form)
+	}
+
 	var buf bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&buf, "gallery", g); err != nil {
 		t.Fatalf("rendering gallery: %v", err)
@@ -261,7 +268,8 @@ func TestGallery(t *testing.T) {
 		"Expand all", "Collapse all", `<h2 class="series-row__title">Hunter × Hunter</h2>`, `<span class="size__note">+ 26 unknown</span>`,
 		`<span class="series-row__counts">0 seasons · 0 episodes</span>`, "No movies match “Dr. Strangelove or: How I Learned”",
 		"Clear search</button>", `placeholder="Search titles"`, `value="blade"`, "Date added</button>", "Descending</button>", "Ascending</button>",
-		`aria-pressed="true">Size</button>`, `aria-pressed="true">Year</button>`} {
+		`aria-pressed="true">Size</button>`, `aria-pressed="true">Year</button>`,
+		"That password is not correct. Check it and try again.", "Too many wrong passwords.", "Open dashboard</button>"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("gallery missing %q", want)
 		}

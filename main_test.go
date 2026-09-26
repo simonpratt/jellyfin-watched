@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -447,6 +448,97 @@ func TestAppRefreshNowAndStaleData(t *testing.T) {
 	}
 	if n := strings.Count(logs.String(), "library refresh failed"); n != 1 {
 		t.Errorf("%d failures logged, want 1:\n%s", n, logs)
+	}
+}
+
+// With DASHBOARD_PASSWORD set, nothing is served without the password;
+// with it, the dashboard works as before. Neither the password nor the key
+// reaches a response or the logs.
+func TestAppPasswordGate(t *testing.T) {
+	const password = "s3cret-dashboard-pw-71c"
+	fake := &fakeJellyfin{}
+	base, logs, stop := startAppWithEnv(t, fake, map[string]string{"DASHBOARD_PASSWORD": password})
+	stopped := false
+	defer func() {
+		if !stopped {
+			stop()
+		}
+	}()
+
+	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	var everything strings.Builder
+	record := func(resp *http.Response) string {
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		_ = resp.Header.Write(&everything)
+		everything.Write(b)
+		return string(b)
+	}
+	for _, p := range []string{"/movies", "/tv", "/posters/1/tag1", "/refresh?since=g1", "/tv/series/sr1"} {
+		resp, err := noRedirect.Get(base + p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		record(resp)
+		if resp.StatusCode != http.StatusSeeOther || !strings.HasPrefix(resp.Header.Get("Location"), "/login?next=") {
+			t.Errorf("GET %s without a session: status %d Location %q", p, resp.StatusCode, resp.Header.Get("Location"))
+		}
+	}
+
+	resp, err := noRedirect.PostForm(base+"/login", url.Values{"password": {"wrong"}, "next": {"/movies"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body := record(resp); resp.StatusCode != http.StatusUnauthorized || !strings.Contains(body, "That password is not correct.") {
+		t.Errorf("wrong password: status %d", resp.StatusCode)
+	}
+
+	resp, err = noRedirect.PostForm(base+"/login", url.Values{"password": {password}, "next": {"/movies"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record(resp)
+	cookies := resp.Cookies()
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/movies" || len(cookies) != 1 {
+		t.Fatalf("right password: status %d Location %q cookies %v", resp.StatusCode, resp.Header.Get("Location"), cookies)
+	}
+	withSession := func(p string) string {
+		t.Helper()
+		req, _ := http.NewRequest("GET", base+p, nil)
+		req.AddCookie(cookies[0])
+		resp, err := noRedirect.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := record(resp)
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("GET %s with a session: status %d", p, resp.StatusCode)
+		}
+		return body
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for !strings.Contains(withSession("/movies"), "Dr. Strangelove") {
+		if time.Now().After(deadline) {
+			t.Fatal("library never loaded")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if withSession("/posters/1/tag1") != posterBytes {
+		t.Error("poster with a session")
+	}
+	stop()
+	stopped = true
+
+	if !strings.Contains(logs.String(), "password_required=true") {
+		t.Errorf("logs don't say a password is required:\n%s", logs)
+	}
+	for _, secret := range []string{password, testKey} {
+		if strings.Contains(everything.String(), secret) {
+			t.Errorf("%q appears in a response", secret)
+		}
+		if strings.Contains(logs.String(), secret) {
+			t.Errorf("%q appears in the logs:\n%s", secret, logs)
+		}
 	}
 }
 

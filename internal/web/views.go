@@ -691,3 +691,32 @@ func newTVPage(st library.Status, now time.Time, v library.View, seasons string)
 	}
 	return p
 }
+
+// PasswordPage is the view model for the password screen.
+type PasswordPage struct {
+	Title string
+	Form  PasswordForm
+}
+
+// PasswordForm is the view model for the password-form component. Error,
+// when set, is shown under the field ("That password is not correct…").
+// The password typed is never put back into the page.
+type PasswordForm struct {
+	Action string
+	Next   string // the dashboard path to return to
+	Error  string
+	Submit Button
+}
+
+func newPasswordPage(next, errMsg string) PasswordPage {
+	return PasswordPage{
+		Title: "Enter the password",
+		Form: PasswordForm{Action: loginPath, Next: nextOrHome(next), Error: errMsg,
+			Submit: Button{Label: "Open dashboard", Primary: true, Type: "submit"}},
+	}
+}
+
+const (
+	wrongPassword   = "That password is not correct. Check it and try again."
+	tooManyPassword = "Too many wrong passwords. Wait a minute and try again."
+)

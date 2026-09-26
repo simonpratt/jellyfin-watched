@@ -2,13 +2,7 @@
 {{define "layout"}}<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.Title}} · Spool</title>
-<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-<link rel="preload" href="/static/fonts/instrument-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/static/css/tokens.css">
-<link rel="stylesheet" href="/static/css/components.css">
+{{template "document-head" .Title}}
 <script src="/static/htmx.min.js" defer></script>
 </head>
 <body>
@@ -25,6 +19,16 @@
 </body>
 </html>
 {{end}}
+
+{{/* document-head: what every page's <head> has: the title, icon, fonts
+     and stylesheets. Takes the page title. */}}
+{{define "document-head"}}<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.}} · Spool</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="/static/fonts/instrument-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/css/tokens.css">
+<link rel="stylesheet" href="/static/css/components.css">{{end}}
 
 {{/* app-header: Spool mark and name, the Movies / TV shows tabs, and the
      refresh control on the right. Takes a Page. */}}

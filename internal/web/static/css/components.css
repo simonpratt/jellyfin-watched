@@ -3,7 +3,8 @@
  * tokens.css. Hairlines are 1px borders; the selected tab's underline is 2px
  * (DESIGN tokens sheet: "2 px accent").
  *
- * Order: fonts, base, layout (header, page head, list head), then one
+ * Order: fonts, base, layout (header, page head, list head, password page),
+ * then one
  * section per component in the same order as templates/components/.
  *
  * The one raw length is the narrow-screen breakpoint (40rem): media queries
@@ -292,6 +293,59 @@ a {
   .list-head__completion {
     display: none;
   }
+}
+
+/* ---------------------------------------------------------- password-page */
+/* The password screen: no header. The Spool mark and name, the heading,
+   what the password is, then the password-form, in one column centred on
+   the page. The column is nine --space-10 (360px) wide, as in the
+   Password mockup; the design has no token for it. */
+
+.password-page {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: var(--space-10) var(--space-4);
+}
+
+.password-page__panel {
+  width: calc(9 * var(--space-10));
+  max-width: 100%;
+}
+
+.password-page__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-8);
+  color: var(--text);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+}
+
+.password-page__mark {
+  width: var(--space-6);
+  height: var(--space-6);
+  flex: none;
+}
+
+.password-page__title {
+  color: var(--text);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-strong);
+  line-height: 1.25;
+}
+
+.password-page__text {
+  margin-top: var(--space-2);
+  color: var(--text-2);
+  font-size: var(--text-md);
+}
+
+.password-page .password-form {
+  margin-top: var(--space-8);
 }
 
 /* --------------------------------------------------------------- button */
@@ -617,6 +671,72 @@ a {
     margin: var(--space-4);
     padding: var(--space-3) var(--space-4);
   }
+}
+
+/* --------------------------------------------------------- password-form */
+/* A labelled sunken field, then the primary button at full width. The
+   error state marks the field with a strong text-coloured edge and puts
+   the message, after an info mark, under it: neutral, never a warning
+   colour. */
+
+.password-form {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.password-form__field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.password-form__label {
+  color: var(--text);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+}
+
+.password-form__input {
+  width: 100%;
+  min-height: var(--control-h);
+  margin: 0;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-md);
+}
+
+/* A 2px edge: the border and an inset line inside it. Keeps the focus
+   ring when focused, which :focus-visible alone would lose here. */
+.password-form__input[aria-invalid="true"] {
+  border-color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--text);
+}
+
+.password-form__input[aria-invalid="true"]:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--text), var(--focus-ring);
+}
+
+.password-form__error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  color: var(--text);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+.password-form__error-mark {
+  width: var(--space-4);
+  height: var(--space-4);
+  flex: none;
+  color: var(--text-2);
+}
+
+.password-form .button {
+  width: 100%;
 }
 
 /* --------------------------------------------------------------- poster */

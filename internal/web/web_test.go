@@ -58,7 +58,7 @@ func newTestHandler(t *testing.T, s Library) http.Handler {
 
 func newTestHandlerWithPosters(t *testing.T, s Library, p Posters) http.Handler {
 	t.Helper()
-	h, err := NewHandler(s, p, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	h, err := NewHandler(s, p, slog.New(slog.NewTextHandler(io.Discard, nil)), "")
 	if err != nil {
 		t.Fatal(err)
 	}

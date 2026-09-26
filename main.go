@@ -52,7 +52,7 @@ func run(ctx context.Context, getenv func(string) string, logOut io.Writer, onLi
 	}
 	cache := library.NewCache(client, library.Options{IncludeSpecials: cfg.IncludeSpecials})
 
-	handler, err := web.NewHandler(cache, artwork.New(client), logger)
+	handler, err := web.NewHandler(cache, artwork.New(client), logger, cfg.DashboardPassword.Reveal())
 	if err != nil {
 		return err
 	}
@@ -66,7 +66,7 @@ func run(ctx context.Context, getenv func(string) string, logOut io.Writer, onLi
 		ReadHeaderTimeout: 10 * time.Second,
 		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
 	}
-	logger.Info("listening", "addr", ln.Addr().String(), "jellyfin_url", cfg.JellyfinURL)
+	logger.Info("listening", "addr", ln.Addr().String(), "jellyfin_url", cfg.JellyfinURL, "password_required", cfg.DashboardPassword.IsSet())
 	if onListen != nil {
 		onListen(ln.Addr())
 	}

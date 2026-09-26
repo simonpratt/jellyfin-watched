@@ -52,7 +52,7 @@ var testNow = time.Date(2026, 9, 26, 14, 42, 0, 0, time.UTC)
 
 func newClockedHandler(t *testing.T, lib Library) http.Handler {
 	t.Helper()
-	h, err := newHandler(lib, &stubPosters{}, slog.New(slog.NewTextHandler(io.Discard, nil)), func() time.Time { return testNow })
+	h, err := newHandler(lib, &stubPosters{}, slog.New(slog.NewTextHandler(io.Discard, nil)), func() time.Time { return testNow }, "")
 	if err != nil {
 		t.Fatal(err)
 	}

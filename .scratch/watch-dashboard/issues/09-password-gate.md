@@ -4,11 +4,11 @@
 
 **Blocked by:** 02 (Design foundation and page shell)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] With `DASHBOARD_PASSWORD` unset, every page loads with no prompt
-- [ ] With it set, every page, fragment and image route redirects (or returns 401 for htmx requests) until a session exists
-- [ ] The password is compared in constant time; a wrong password shows the designed error state
-- [ ] The session cookie is HttpOnly and SameSite
-- [ ] The password never appears in logs
-- [ ] Tests cover the gated and ungated modes, wrong and right passwords, and protected image routes
+- [x] With `DASHBOARD_PASSWORD` unset, every page loads with no prompt
+- [x] With it set, every page, fragment and image route redirects (or returns 401 for htmx requests) until a session exists
+- [x] The password is compared in constant time; a wrong password shows the designed error state
+- [x] The session cookie is HttpOnly and SameSite
+- [x] The password never appears in logs
+- [x] Tests cover the gated and ungated modes, wrong and right passwords, and protected image routes

@@ -43,15 +43,19 @@ type handler struct {
 	log     *slog.Logger
 	pages   map[string]*template.Template
 	now     func() time.Time
+	gate    *gate // nil without a password
 }
 
-// NewHandler returns the dashboard's HTTP handler.
-func NewHandler(lib Library, posters Posters, logger *slog.Logger) (http.Handler, error) {
-	return newHandler(lib, posters, logger, time.Now)
+// NewHandler returns the dashboard's HTTP handler. A non-empty password
+// puts every page, fragment and image behind the password screen (see
+// auth.go).
+func NewHandler(lib Library, posters Posters, logger *slog.Logger, password string) (http.Handler, error) {
+	return newHandler(lib, posters, logger, time.Now, password)
 }
 
-// newHandler is NewHandler with a clock, for "N minutes ago".
-func newHandler(lib Library, posters Posters, logger *slog.Logger, now func() time.Time) (http.Handler, error) {
+// newHandler is NewHandler with a clock, for "N minutes ago" and session
+// expiry.
+func newHandler(lib Library, posters Posters, logger *slog.Logger, now func() time.Time, password string) (http.Handler, error) {
 	pages, err := parsePages()
 	if err != nil {
 		return nil, err
@@ -61,6 +65,11 @@ func newHandler(lib Library, posters Posters, logger *slog.Logger, now func() ti
 		return nil, err
 	}
 	h := &handler{lib: lib, posters: posters, log: logger, pages: pages, now: now}
+	if password != "" {
+		if h.gate, err = newGate(password, now, logger); err != nil {
+			return nil, err
+		}
+	}
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /{$}", http.RedirectHandler("/movies", http.StatusFound))
@@ -71,6 +80,11 @@ func newHandler(lib Library, posters Posters, logger *slog.Logger, now func() ti
 	mux.HandleFunc("GET "+seriesPath+"{id}", h.series)
 	mux.HandleFunc("GET "+posterPath+"{id}/{tag}", h.poster)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
+	mux.HandleFunc("GET "+loginPath, h.passwordScreen)
+	mux.HandleFunc("POST "+loginPath, h.login)
+	if h.gate != nil {
+		return h.gate.protect(mux), nil
+	}
 	return mux, nil
 }
 
@@ -243,7 +257,11 @@ func (h *handler) poster(w http.ResponseWriter, r *http.Request) {
 	// The URL carries the tag, which changes with the image, so a matching
 	// URL can be cached for good. An old tag (a page rendered before a
 	// refresh) gets the current poster, revalidated each time.
+	// Behind a password, only the browser may keep it, not a shared cache.
 	cache := "public, max-age=31536000, immutable"
+	if h.gate != nil {
+		cache = "private, max-age=31536000, immutable"
+	}
 	if r.PathValue("tag") != tag {
 		cache = "no-cache"
 	}
@@ -257,6 +275,11 @@ func (h *handler) poster(w http.ResponseWriter, r *http.Request) {
 // render executes a page into a buffer first, so a template error becomes a
 // clean 500 rather than a half-written page.
 func (h *handler) render(w http.ResponseWriter, page, block string, data any) {
+	h.renderStatus(w, http.StatusOK, page, block, data)
+}
+
+// renderStatus is render with a status other than 200.
+func (h *handler) renderStatus(w http.ResponseWriter, status int, page, block string, data any) {
 	var buf bytes.Buffer
 	if err := h.pages[page].ExecuteTemplate(&buf, block, data); err != nil {
 		h.log.Error("rendering page", "page", page, "err", err)
@@ -264,5 +287,6 @@ func (h *handler) render(w http.ResponseWriter, page, block string, data any) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
 	_, _ = buf.WriteTo(w)
 }
