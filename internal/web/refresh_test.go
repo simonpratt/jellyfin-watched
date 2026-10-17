@@ -121,7 +121,7 @@ func TestLoadedPageShowsUpdatedAgoAndRefreshButton(t *testing.T) {
 		`Refresh now</button>`,
 		"Alien",
 	)
-	assertNotContains(t, body, "refresh-control__hairline", "Refreshing…", "notice", "Loading your library")
+	assertNotContains(t, body, "refresh-control__hairline", "Refreshing…", `class="notice" role="status"`, "Loading your library")
 }
 
 // "Refresh now" starts a refresh and swaps in the busy control; clicks
@@ -221,7 +221,7 @@ func TestStaleDataKeepsListWithNotice(t *testing.T) {
 		"Alien",
 	)
 	// The notice sits between the page head and the list.
-	if i, j, k := strings.Index(body, "page-head"), strings.Index(body, `class="notice"`), strings.Index(body, "list-head"); !(i < j && j < k) {
+	if i, j, k := strings.Index(body, "page-head"), strings.Index(body, `class="notice" role="status"`), strings.Index(body, "list-head"); !(i < j && j < k) {
 		t.Errorf("notice not between page head and list (%d, %d, %d)", i, j, k)
 	}
 	tv := do(t, h, "GET", "/tv", nil).Body.String()

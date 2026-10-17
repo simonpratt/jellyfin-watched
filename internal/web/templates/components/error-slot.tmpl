@@ -1,0 +1,13 @@
+{{/* error-slot: where static/app.js writes the message of a failed htmx
+     request (a search, a sort, a refresh or its polling). It wears the
+     notice style and stays hidden while empty; the next request that
+     succeeds empties and hides it again. Takes the message, "" in the
+     layout. */}}
+{{define "error-slot"}}<div id="error-slot"{{if not .}} hidden{{end}}>
+<div class="notice" role="alert">
+{{template "info-mark" "notice__mark"}}
+<p class="notice__headline" data-error-text>{{.}}</p>
+<p class="notice__detail">The page still shows what it last loaded.</p>
+</div>
+</div>
+{{end}}

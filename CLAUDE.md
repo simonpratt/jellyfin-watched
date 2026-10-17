@@ -52,6 +52,7 @@ Follow the `homelab-frontend` skill (htmx branch). In this repo the templates ar
 - **Accent** is for interaction only (focus, the selected tab or sort, the primary button, the loading hairline). Data stays neutral: nothing is green, red or amber.
 - **Numbers** are all in the mono font, including sizes, years, counts and "x / y".
 - **Depth** comes from the surface tokens and hairlines; the app has no shadows.
+- **Failed htmx requests** show in the layout's `error-slot` component (notice style), filled and cleared by `internal/web/static/app.js`, the one place for client glue.
 - **Reduced motion** sets `--duration: 0ms`. The loading hairline and the refresh arc stay still.
 
 ## Done means

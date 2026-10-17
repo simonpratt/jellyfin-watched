@@ -46,6 +46,7 @@ const galleryTmpl = `{{define "gallery"}}<!doctype html>
 <section><h2 class="gallery__label">Header · refreshing</h2>{{template "app-header" .HeaderRefreshing}}</section>
 <section><h2 class="gallery__label">Refresh control · idle, refreshing, stale (3 hours), failed first load</h2><div class="gallery__stack">{{range .Refresh}}<div class="gallery__refresh">{{template "refresh-control" .}}</div>{{end}}</div></section>
 <section><h2 class="gallery__label">Notice · stale data, failed first load</h2><div class="gallery__stack gallery__wide">{{range .Notices}}{{template "notice" .}}{{end}}</div></section>
+<section><h2 class="gallery__label">Error slot · a failed htmx request (hidden until one fails)</h2><div class="gallery__stack gallery__wide">{{template "error-slot" "Couldn't reach Jellyfin-watched. Check it's running, then try again."}}</div></section>
 <section><h2 class="gallery__label">Empty state · first load, empty movies, empty TV shows, no search results</h2>{{range .Empties}}<div class="gallery__panel">{{template "empty-state" .}}</div>{{end}}</section>
 <section><h2 class="gallery__label">Search · empty, typed (× clears); sort control · title ascending, size descending</h2><div class="gallery__stack">{{range .Searches}}<form>{{template "search" .}}</form>{{end}}{{range .Sorts}}<form>{{template "sort-control" .}}</form>{{end}}</div></section>
 <section><h2 class="gallery__label">List controls · TV, with expand all</h2><div class="page-head__tools gallery__tools">{{template "list-controls" .Controls}}{{template "button" .ExpandAll}}</div></section>

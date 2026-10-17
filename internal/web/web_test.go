@@ -145,13 +145,28 @@ func TestAssetsEmbeddedAndLocal(t *testing.T) {
 			t.Errorf("GET %s: status %d, %d bytes", ref, rec.Code, rec.Body.Len())
 		}
 	}
-	for _, want := range []string{"/static/htmx.min.js", "/static/css/components.css"} {
+	for _, want := range []string{"/static/htmx.min.js", "/static/app.js", "/static/css/components.css"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page does not reference %s", want)
 		}
 	}
 	if !strings.Contains(get(t, h, "/static/htmx.min.js").Body.String(), "htmx") {
 		t.Error("htmx.min.js is not htmx")
+	}
+}
+
+// Every page carries the error slot, hidden, for static/app.js to fill when
+// an htmx request fails.
+func TestPagesCarryHiddenErrorSlot(t *testing.T) {
+	h := newTestHandler(t, stubSnapshots{ok: true})
+	for _, path := range []string{"/movies", "/tv"} {
+		body := get(t, h, path).Body.String()
+		if !strings.Contains(body, `<div id="error-slot" hidden>`) {
+			t.Errorf("GET %s: no hidden error slot", path)
+		}
+	}
+	if !strings.Contains(get(t, h, "/static/app.js").Body.String(), "htmx:responseError") {
+		t.Error("app.js has no htmx error handler")
 	}
 }
 
