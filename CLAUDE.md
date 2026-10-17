@@ -1,74 +1,68 @@
-# Jellyfin-watched: Jellyfin watch-completion dashboard
+# Jellyfin-watched
 
-A read-only Go + htmx dashboard showing which Jellyfin users have completed each movie and TV season.
+A self-hosted, read-only dashboard showing which Jellyfin users have completed each movie and TV season. A Go server renders `html/template` pages with htmx, in one Docker image on the LAN-only homelab. `REQUIREMENTS.md` is the spec.
 
-## Sources of truth
+**Read `CONTEXT.md` before any work.** It is the domain glossary. Use its terms in code, API, UI copy, tests and tickets, and never the words listed under _Avoid_ (a **User** is a Jellyfin user whose watch state is shown; the person using the dashboard is the **Administrator**). If a term is missing or no longer fits, raise it with the user rather than inventing one.
 
-- `REQUIREMENTS.md`: functional and technical requirements. Wins any conflict.
-- `DESIGN.md`: the design brief. **The app is dark mode only**, so skip the brief's light-theme requirements.
-- `designs/tokens.css`: every colour, size and space value.
-- `designs/*.png`: the designer's mockups (dark, @2x). They call the app "Spool"; its name is now "Jellyfin-watched". Read the PNG for any screen or component you touch before writing markup. `Components@2x.png` and `States@2x.png` cover the variants and states.
-- `.scratch/watch-dashboard/issues/`: tickets, each with "Blocked by", `**Status:**` (`ready-for-agent`, `done` or `wont-do`) and acceptance criteria. A ticket marked `wont-do` stays unbuilt.
-- Jellyfin API behaviour confirmed against the real server (version 12.1.0) is recorded in code comments next to each call in `internal/jellyfin/client.go`. Read them before relying on a field or flag. For example, completion is worked out per episode because the season-level `Played` flag is wrong on this server.
+Before building significant new behaviour or a new feature, run the `/domain-modeling` skill: it sharpens the terms the work introduces in `CONTEXT.md` and records any hard-to-reverse decision as an ADR.
 
-## Hard rules
+## Sources, and which one wins
 
-- **Read-only.** The Jellyfin client sends GET only, through its single `Get` method; a test fails if the client gains other methods. The app's own routes may use POST (e.g. `POST /refresh`).
-- **The API key and dashboard password stay on the server:** never in HTML, htmx fragments, image responses, headers or logs.
-- **Neutral UI.** Nothing recommends, ranks, flags or highlights items for deletion (`DESIGN.md` §3).
-- **Everything is embedded** with `embed`; no CDNs or other runtime external resources.
-- **Standard library first.** Add a dependency only when the standard library is clearly inadequate, and say why.
-- **Tests use a fake Jellyfin** built with `net/http/httptest`, returning JSON shaped like the real API.
-- **The password gate covers every route** except `/login` and `/static/*`. Put new routes behind it.
+- `REQUIREMENTS.md`: functional and technical requirements, with the exact completion and size rules in §3 Definitions.
+- Linear tickets: what to build. A ticket's acceptance criteria are its definition of done.
+- `DESIGN.md`: the design brief. The app is dark only, so skip the brief's light-theme requirements.
+- `designs/`: the designer's mockups (`*.png`, dark, @2x) and `tokens.css`. The mockups call the app "Spool"; its name is now "Jellyfin-watched". Read the PNG for any screen or component you touch before writing markup; `Components@2x.png` and `States@2x.png` cover the variants and states.
 
-## Code layout
+When they disagree, `CONTEXT.md` wins on terms, the ticket wins on behaviour, `designs/` wins on layout, colour and copy, and `REQUIREMENTS.md` wins everything else. Mention each disagreement you resolve in the ticket or the commit message.
 
-- `internal/jellyfin`: the GET-only client.
-- `internal/library`: the snapshot cache, refresh scheduling, completion logic, and search and sort.
-- `internal/artwork`: the in-memory poster cache.
-- `internal/web`: everything the browser receives. The other packages hand it plain Go data and hold no HTML or CSS.
+## Tickets
 
-## UI components
+Tickets are in Linear, project `jellyfin-watched` (team SIM). `/linear-refine` and `/linear-implement` carry the status flow and commit format. For any other change, commit to `master` with the subject `SIM-<n>: <summary>` when it belongs to a ticket.
 
-The components live in `internal/web/templates/components/`, one file each. `internal/web/static/css/components.css` has one commented section per component, in the same order. Before building something, look there and extend an existing component with a variant field rather than making a near-copy.
+Done means every acceptance criterion is met. Automated criteria get their test in the same commit. Manual ones (on a phone, in devtools) are checked, or reported as unchecked with the steps to check them.
 
-- **One component = one `{{define "name"}}` block taking one view-model struct** from `views.go`, called as `{{template "user-tag" .User}}`.
-- **Formatting happens in Go** (`views.go` using `format.go`). Templates only print fields and use `if`/`range`.
-- **Fragments reuse components.** Every htmx response renders the same `define` blocks as the full page.
-- **View state lives in the URL**: `q`, `sort`, `dir`, and on TV `seasons` plus the series shown (`show`) or, under `seasons=all`, hidden (`hide`) one by one. Build URLs with `viewURL`, so they survive the page's self-reload after a refresh (`#app` in `layout.tmpl`), back and forward, and use without JavaScript.
-- **CSS uses tokens only**: `var(--…)`, with no raw hex or px font sizes. A size the design gives no token for is written as a `calc()` of space tokens (e.g. `calc(6 * var(--space-12))`), with a comment saying why.
-- **Class names are prefixed with the component name**, e.g. `.user-tag`, `.user-tag__code`, `.user-tag--progress`.
+Jellyfin API behaviour confirmed against the real server (version 12.1.0) is recorded in code comments next to each call in `internal/jellyfin/client.go`. Read them before relying on a field or flag (completion is worked out per episode, because the season-level `Played` flag is wrong on this server), and record any behaviour you newly confirm there in the same change.
 
-## Design rules
+## Commands
 
-- **User identity:** each user gets hue `--user-1`…`--user-10`, in Jellyfin's `/Users` order, wrapping after 10. Each also gets a two-letter mono code: the first two letters of a one-word name, or initials for a multi-word one. The code tells users apart; the hue only speeds scanning. The server has 6 users with distinct codes, so code collisions need no handling.
-- **The accent is for interaction only** (focus, the selected tab or sort, the primary button, the loading hairline). Data never takes the accent, and nothing is green, red or amber.
-- **Every number is in the mono font**, including sizes, years, counts and "x / y".
-- **Depth comes from the surface tokens and hairlines**, never shadows.
-- **Dark mode only.** `internal/web/static/css/tokens.css` is `designs/tokens.css` with `color-scheme: dark` set and the `@media (prefers-color-scheme: light)` block deleted. Nothing else may use `prefers-color-scheme`. When the designer updates `designs/tokens.css`, re-copy it with the same two changes. A test fails if the copy drifts.
+`go run .` with the variables from `.env.example` set (serves on `LISTEN_ADDR`, default `:8080`), and `go test -race ./...` (everything, including app-level tests against a fake Jellyfin). `.env` points at the real Jellyfin server.
+
+- **`go test -race`** needs a C compiler (gcc).
+- **Gallery:** `internal/web/gallery_test.go` renders every component with edge-case fixtures to `tmp/gallery.html`. Add fixtures for any new component or variant.
+- **Viewing the app** in this sandbox: start `go run .` with `.env` loaded as a background task, with `LISTEN_ADDR=0.0.0.0:8080`, and wait until `/movies` returns 200. Then ask the user to run `sbx ports <sandbox-name> --publish 8080:8080` on their host, with the name from `$SANDBOX_NAME`, and to log in with `DASHBOARD_PASSWORD` if it is set. Restart after a Go or template change. Stop the task when asked.
+
+## Invariants
+
+- **Read-only:** the Jellyfin client sends GET only, through its single `Get` method. A test fails if the client gains other methods. The app's own routes may use POST (e.g. `POST /refresh`).
+- **Secrets stay on the server:** the API key and dashboard password appear only in server memory, never in HTML, htmx fragments, image responses, headers or logs. Tests fail if an error or log line contains them.
+- **Neutral UI:** the app shows completion only. Nothing recommends, ranks, flags or highlights items for deletion (`DESIGN.md` §3, `REQUIREMENTS.md` § Out of scope).
+- **Password gate:** every new route goes behind it; only `/login` and `/static/*` are public. A test checks every route.
+- **Standard library first:** add a dependency only when the standard library is clearly inadequate, and say why.
+- **Fake Jellyfin:** tests use one built with `net/http/httptest`, returning JSON shaped like the real API.
+
+## UI
+
+Follow the `homelab-frontend` skill (htmx branch). In this repo the templates are `html/template`, not templ: each component is one `{{define "name"}}` block in `internal/web/templates/components/`, one file each, taking one view-model struct from `internal/web/views.go`, called as `{{template "user-tag" .User}}`. `internal/web/static/css/components.css` has one commented section per component, in the same order, and the gallery test stands in for the catalogue page.
+
+- **Class names** are prefixed with the component name: `.user-tag`, `.user-tag__code`, `.user-tag--progress`.
+- **Untokened sizes:** a size the design gives no token for is a `calc()` of space tokens (e.g. `calc(6 * var(--space-12))`), with a comment saying why. A test fails on raw hex outside `tokens.css`.
+- **View state** is `q`, `sort`, `dir`, and on TV `seasons` plus the series shown (`show`) or, under `seasons=all`, hidden (`hide`). Build URLs with `viewURL`, so they survive the page's self-reload after a refresh (`#app` in `layout.tmpl`).
+- **Tokens:** `internal/web/static/css/tokens.css` is `designs/tokens.css` with `color-scheme: dark` set and the `@media (prefers-color-scheme: light)` block deleted. When the designer updates `designs/tokens.css`, re-copy it with the same two changes. A test fails if the copy drifts or anything else uses `prefers-color-scheme`.
+- **User identity:** each user gets hue `--user-1`…`--user-10`, in Jellyfin's `/Users` order, wrapping after 10, and a two-letter mono code: the first two letters of a one-word name, or initials for a multi-word one. The code tells users apart; the hue only speeds scanning. The server has 6 users with distinct codes, so code collisions need no handling.
+- **Accent** is for interaction only (focus, the selected tab or sort, the primary button, the loading hairline). Data stays neutral: nothing is green, red or amber.
+- **Numbers** are all in the mono font, including sizes, years, counts and "x / y".
+- **Depth** comes from the surface tokens and hairlines; the app has no shadows.
 - **Reduced motion** sets `--duration: 0ms`. The loading hairline and the refresh arc stay still.
 
-## Validation
+## Done means
 
-Go tools may need a login shell: `bash -l -c "..."`. `go test -race` needs a C compiler (gcc).
-
-Before calling work done, all of these pass:
+All of these pass:
 
 ```bash
-gofmt -l .           # must print nothing
+gofmt -l .           # prints nothing
 go vet ./...
 go test -race ./...
 go build ./...
 ```
 
-Then prove the behaviour in the running app, not just in tests:
-
-- Run the binary with the environment variables from `.env.example`. `.env` points at the real Jellyfin server; GET only.
-- `curl` the affected pages and fragments. Check they show the new behaviour and don't contain the API key.
-- For UI changes:
-  - The gallery test in `internal/web/gallery_test.go` renders every component with edge-case fixtures to `tmp/gallery.html`. Add fixtures for any new component or variant.
-  - Screenshot the gallery and the changed pages with headless Chrome, at desktop width and at 380 px, with no horizontal scroll. Compare them against the matching `designs/*.png` and report visible differences.
-  - `grep` `components.css` for raw hex values (`#[0-9a-fA-F]{3,6}`); only `tokens.css` may contain them.
-- For container changes, `docker build` and run the image with only environment variables set.
-
-When you rely on an unconfirmed Jellyfin behaviour, check it against the real server and record it in a code comment next to the call.
+Then prove the behaviour in the running app, not just in tests: `curl` the changed pages and fragments, check they show the new behaviour and don't contain the API key, and report what you checked. For UI changes, screenshot the gallery and the changed pages with headless Chrome at desktop width and at 380 px, with no horizontal scroll, and compare them against the matching `designs/*.png`. For container changes, `docker build` and run the image with only environment variables set.
