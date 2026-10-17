@@ -1,64 +1,139 @@
-name: CI
+# CI for jellyfin-watched: a Go server rendering templates, with no Node.
+#
+# checks and smoke run in parallel. checks runs gofmt, go vet, go test -race
+# and go build (the CLAUDE.md validation list); the app-level tests in main_test.go boot the whole service
+# in-process against a fake Jellyfin, so there is no separate e2e job. smoke
+# builds the linux/amd64 image, runs it with a password set and an unreachable
+# Jellyfin, and curls the key routes: the pages, the static assets, and the
+# password gate. publish waits for both, then builds linux/amd64 and
+# linux/arm64 in one step (Go cross-compiles in the Dockerfile, so no QEMU)
+# with the amd64 layers from smoke's cache. It pushes to GHCR on master and v*
+# tags; pull requests only build.
+#
+# Tags: master → :latest + :sha-<short>; tag vX.Y.Z → :X.Y.Z + :sha-<short>.
+#
+# Actions are on their major version tags; Dependabot (.github/dependabot.yml)
+# raises a PR when a new major comes out.
+name: ci
 
 on:
   push:
-    branches: ["**"]
+    branches: [master]
     tags: ["v*"]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/jellyfin-watched
+
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.26"
+          go-version-file: go.mod
+
       - name: gofmt
         run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
-      - name: go vet
-        run: go vet ./...
-      - name: go test
-        run: go test -race ./...
-      - name: go build
-        run: go build ./...
 
-  image:
-    # Publish only from the master branch and from v* tags, after tests pass.
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
-    needs: test
-    runs-on: ubuntu-latest
+      - run: go vet ./...
+
+      - run: go test -race ./...
+
+      - run: go build ./...
+
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: jellyfin-watched:smoke
+          cache-from: |
+            type=gha,scope=smoke
+            type=gha,scope=publish
+          cache-to: type=gha,scope=smoke,mode=max
+
+      # Nothing listens on the Jellyfin URL: pages are served from the cache
+      # (empty, with a refresh error) whether or not Jellyfin answers.
+      - name: Start image
+        run: |
+          docker run -d --name app -p 8080:8080 \
+            -e JELLYFIN_URL=http://127.0.0.1:9 -e JELLYFIN_API_KEY=smoke \
+            -e DASHBOARD_PASSWORD=smoke \
+            jellyfin-watched:smoke
+          curl --silent --fail --retry 30 --retry-delay 1 --retry-all-errors http://localhost:8080/login > /dev/null
+
+      - name: Smoke tests against the image
+        run: |
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:8080/movies)" = 303
+          curl --silent --fail --cookie-jar cookies --data password=smoke http://localhost:8080/login > /dev/null
+          curl --silent --fail --cookie cookies http://localhost:8080/movies | grep -q '<title>Movies'
+          curl --silent --fail --cookie cookies http://localhost:8080/tv > /dev/null
+          curl --silent --fail --cookie cookies http://localhost:8080/static/css/tokens.css > /dev/null
+
+      - name: Image logs
+        if: failure()
+        run: docker logs app
+
+  publish:
+    needs: [checks, smoke]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        if: github.event_name != 'pull_request'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ github.repository }}
-          # main: latest + full commit SHA. Tag v1.2.0: v1.2.0 + the SHA.
-          # metadata-action lowercases the image name, as ghcr.io requires.
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,format=long,prefix=
-            type=ref,event=tag
-      - uses: docker/build-push-action@v6
+            type=sha
+            type=semver,pattern={{version}}
+
+      # The amd64 layers come from smoke's cache, so this is the image that
+      # was smoke-tested.
+      - uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          annotations: ${{ steps.meta.outputs.annotations }}
+          cache-from: |
+            type=gha,scope=smoke
+            type=gha,scope=publish
+          cache-to: type=gha,scope=publish,mode=max
